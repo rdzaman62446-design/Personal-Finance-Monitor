@@ -1,9 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
-import SwipeRow from '../components/SwipeRow';
 import { CATEGORIES, Expense, formatDate, formatDay, formatTime, peso } from '../expenses';
 import { Theme } from '../theme';
 
@@ -73,7 +72,7 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
 
       {filtered.length > 0 && (
         <Text style={{ color: t.textFaint, fontSize: 11, textAlign: 'center' }}>
-          Tap a row to edit · Swipe left to delete
+          Tap a row to edit · Long-press to delete
         </Text>
       )}
 
@@ -88,14 +87,16 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
         ) : (
           filtered.map((e, i) => (
             <FadeInView key={e.id} delay={Math.min(i, 12) * 35}>
-              <SwipeRow onDelete={() => onDelete(e)} dangerColor={t.danger} dangerSoft={t.dangerSoft}>
-                <Pressable
-                  onPress={() => onEdit(e)}
-                  style={({ pressed }) => [
-                    styles.rowItem,
-                    { borderBottomColor: t.border, backgroundColor: pressed ? t.cardAlt : t.card },
-                  ]}
-                >
+              <PressableScale
+                scaleTo={0.97}
+                onPress={() => onEdit(e)}
+                onLongPress={() => {
+                  Vibration.vibrate(30);
+                  onDelete(e);
+                }}
+                delayLongPress={400}
+              >
+                <View style={[styles.rowItem, { borderBottomColor: t.border, backgroundColor: t.card }]}>
                   <View style={{ width: 82 }}>
                     <Text style={{ color: t.accent, fontWeight: '600', fontSize: 12 }}>{formatTime(e.timestamp)}</Text>
                     <Text style={{ color: t.textMuted, fontSize: 11 }}>
@@ -109,8 +110,8 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
                   <Text style={{ color: t.accent, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
                     {peso(e.amount)}
                   </Text>
-                </Pressable>
-              </SwipeRow>
+                </View>
+              </PressableScale>
             </FadeInView>
           ))
         )}

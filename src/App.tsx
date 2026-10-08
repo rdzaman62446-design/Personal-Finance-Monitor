@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -14,6 +14,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -21,7 +22,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickBackup, shareBackup } from './backup';
 import BudgetModal from './components/BudgetModal';
 import EditModal from './components/EditModal';
-import { FadeInView, PressableScale } from './components/motion';
+import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
 import { Expense, isInMonth, isSameDay, monthOf, toCSV } from './expenses';
 import AddScreen from './screens/AddScreen';
@@ -57,7 +58,11 @@ function Main() {
   const [editing, setEditing] = useState<Expense | null>(null);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [toast, setToast] = useState<ToastData | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const pagerRef = useRef<ScrollView>(null);
+  const { width: pageWidth } = useWindowDimensions();
+  const [scrollX] = useState(() => new Animated.Value(0));
+  // Fractional page index (0 = Add, 1 = Table Log, 2 = Stats) while swiping.
+  const pagePosition = useMemo(() => Animated.divide(scrollX, pageWidth || 1), [scrollX, pageWidth]);
   const t = darkMode ? darkTheme : lightTheme;
 
   // "Now" for the Today / This Month totals; refreshed when the app comes back
@@ -83,7 +88,7 @@ function Main() {
 
   const switchTab = (next: Tab) => {
     setTab(next);
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    pagerRef.current?.scrollTo({ x: TABS.findIndex((x) => x.key === next) * pageWidth, animated: true });
   };
 
   const addExpense = (e: Omit<Expense, 'id' | 'timestamp'>) => {
@@ -192,44 +197,54 @@ function Main() {
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* Re-keyed per tab so each screen animates in when selected. */}
-          <FadeInView key={tab} from={20}>
-            {tab === 'add' && (
-              <AddScreen
-                theme={t}
-                expenses={expenses}
-                spentToday={spentToday}
-                spentThisMonth={spentThisMonth}
-                monthlyBudget={monthlyBudget}
-                onAdd={addExpense}
-                onViewAll={() => switchTab('history')}
-                onSetBudget={() => setBudgetOpen(true)}
-              />
-            )}
-            {tab === 'history' && (
-              <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteExpense} />
-            )}
-            {tab === 'stats' && (
-              <StatsScreen
-                theme={t}
-                expenses={expenses}
-                monthlyBudget={monthlyBudget}
-                onSetBudget={() => setBudgetOpen(true)}
-                onBackup={backup}
-                onRestore={restore}
-                onClear={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setExpenses([]);
-                  showToast('All expenses cleared');
-                }}
-              />
-            )}
-          </FadeInView>
-        </ScrollView>
+        {/* Swipeable pages; the tab bar highlight follows the scroll position. */}
+        <Animated.ScrollView
+          ref={pagerRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+          onMomentumScrollEnd={(e) => {
+            const i = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
+            setTab(TABS[Math.max(0, Math.min(TABS.length - 1, i))].key);
+          }}
+        >
+          <Page width={pageWidth}>
+            <AddScreen
+              theme={t}
+              expenses={expenses}
+              spentToday={spentToday}
+              spentThisMonth={spentThisMonth}
+              monthlyBudget={monthlyBudget}
+              onAdd={addExpense}
+              onViewAll={() => switchTab('history')}
+              onSetBudget={() => setBudgetOpen(true)}
+            />
+          </Page>
+          <Page width={pageWidth}>
+            <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteExpense} />
+          </Page>
+          <Page width={pageWidth}>
+            <StatsScreen
+              theme={t}
+              expenses={expenses}
+              monthlyBudget={monthlyBudget}
+              onSetBudget={() => setBudgetOpen(true)}
+              onBackup={backup}
+              onRestore={restore}
+              onClear={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setExpenses([]);
+                showToast('All expenses cleared');
+              }}
+            />
+          </Page>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
 
-      <TabBar tab={tab} onChange={switchTab} theme={t} />
+      <TabBar tab={tab} position={pagePosition} onChange={switchTab} theme={t} />
 
       <Toast theme={t} toast={toast} onHide={hideToast} />
       <EditModal theme={t} expense={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
@@ -244,16 +259,19 @@ function Main() {
   );
 }
 
-// Bottom navigation with a pill that slides to the active tab.
-function TabBar({ tab, onChange, theme: t }: { tab: Tab; onChange: (t: Tab) => void; theme: typeof darkTheme }) {
+// Bottom navigation with a pill that tracks the pager's scroll position.
+function TabBar({
+  tab,
+  position,
+  onChange,
+  theme: t,
+}: {
+  tab: Tab;
+  position: Animated.AnimatedInterpolation<number> | Animated.Value;
+  onChange: (t: Tab) => void;
+  theme: typeof darkTheme;
+}) {
   const [width, setWidth] = useState(0);
-  const index = TABS.findIndex((x) => x.key === tab);
-  const [pos] = useState(() => new Animated.Value(index));
-
-  useEffect(() => {
-    Animated.spring(pos, { toValue: index, useNativeDriver: true, speed: 16, bounciness: 9 }).start();
-  }, [index, pos]);
-
   const tabWidth = width / TABS.length;
 
   return (
@@ -266,7 +284,7 @@ function TabBar({ tab, onChange, theme: t }: { tab: Tab; onChange: (t: Tab) => v
               {
                 width: tabWidth - 24,
                 backgroundColor: t.accentSoft,
-                transform: [{ translateX: Animated.add(Animated.multiply(pos, tabWidth), 12) }],
+                transform: [{ translateX: Animated.add(Animated.multiply(position, tabWidth), 12) }],
               },
             ]}
           />
@@ -283,6 +301,15 @@ function TabBar({ tab, onChange, theme: t }: { tab: Tab; onChange: (t: Tab) => v
         })}
       </View>
     </SafeAreaView>
+  );
+}
+
+// One full-width page of the pager, with its own vertical scrolling.
+function Page({ width, children }: { width: number; children: ReactNode }) {
+  return (
+    <ScrollView style={{ width }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {children}
+    </ScrollView>
   );
 }
 
