@@ -71,3 +71,17 @@ export function useUpdateCheck() {
       .catch(() => {});
   }, []);
 }
+
+// e.g. "v1.0.0" for the build as installed, or "v1.0.0 · updated Oct 08, 3:15 PM"
+// once an over-the-air update is running.
+export function versionLabel() {
+  const base = `v${Application.nativeApplicationVersion ?? '?'}`;
+  if (Updates.isEmbeddedLaunch || !Updates.createdAt) return base;
+  const when = Updates.createdAt.toLocaleString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${base} · updated ${when}`;
+}

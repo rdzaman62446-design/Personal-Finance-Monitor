@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import * as Application from 'expo-application';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
@@ -14,7 +13,7 @@ import HistoryScreen from './screens/HistoryScreen';
 import StatsScreen from './screens/StatsScreen';
 import { usePersistentState } from './storage';
 import { darkTheme, lightTheme } from './theme';
-import { useUpdateCheck } from './updates';
+import { useUpdateCheck, versionLabel } from './updates';
 
 type Tab = 'add' | 'history' | 'stats';
 
@@ -84,7 +83,7 @@ function Main() {
           <View>
             <Text style={{ color: t.text, fontWeight: '700', fontSize: 17 }}>SpendTrack</Text>
             <Text style={{ color: t.textMuted, fontSize: 10, fontWeight: '500' }}>
-              PHP (₱) Quick Logger · v{Application.nativeApplicationVersion ?? '?'}
+              PHP (₱) Quick Logger · {versionLabel()}
             </Text>
           </View>
         </View>
