@@ -38,10 +38,6 @@ type Props = {
   onSetBudget: () => void;
   onSetCategoryBudget: (category: string) => void;
   onDeleteRecurring: (rule: Recurring) => void;
-  onBackup: () => void;
-  onRestore: () => void;
-  onImport: () => void;
-  onClear: () => void;
 };
 
 export default function StatsScreen({
@@ -57,10 +53,6 @@ export default function StatsScreen({
   onSetBudget,
   onSetCategoryBudget,
   onDeleteRecurring,
-  onBackup,
-  onRestore,
-  onImport,
-  onClear,
 }: Props) {
   const [thisMonth] = useState(() => monthOf(Date.now()));
   const [todayOfMonth] = useState(() => new Date().getDate());
@@ -101,12 +93,6 @@ export default function StatsScreen({
   const totalSavings = (pastSavings ?? 0) + allIncome - allSpent;
   const [nowTs] = useState(() => Date.now());
 
-  const confirmClear = () =>
-    Alert.alert('Delete all entries?', 'This cannot be undone. Make a backup first if you might need them.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Clear Data', style: 'destructive', onPress: onClear },
-    ]);
-
   const confirmDeleteRecurring = (r: Recurring) =>
     Alert.alert(
       'Stop this monthly expense?',
@@ -127,13 +113,6 @@ export default function StatsScreen({
         </Text>
       </View>
     </FadeInView>
-  );
-
-  const action = (icon: keyof typeof Feather.glyphMap, label: string, onPress: () => void, color = t.text) => (
-    <PressableScale onPress={onPress} style={[styles.action, { borderColor: t.border }]}>
-      <Feather name={icon} size={18} color={color} />
-      <Text style={{ color, fontSize: 12, fontWeight: '600' }}>{label}</Text>
-    </PressableScale>
   );
 
   const header = (icon: keyof typeof Feather.glyphMap, title: string, right?: string) => (
@@ -378,20 +357,6 @@ export default function StatsScreen({
         </View>
       </FadeInView>
 
-      <FadeInView delay={360}>
-        <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
-          {header('hard-drive', 'Your Data')}
-          <Text style={{ color: t.textMuted, fontSize: 12 }}>
-            Data lives only on this phone. Back up to Google Drive or Files so you never lose it. Import adds rows from a spreadsheet.
-          </Text>
-          <View style={styles.actions}>
-            {action('upload-cloud', 'Backup', onBackup, t.accent)}
-            {action('download-cloud', 'Restore', onRestore)}
-            {action('file-plus', 'Import', onImport)}
-            {action('trash-2', 'Clear', confirmClear, t.danger)}
-          </View>
-        </View>
-      </FadeInView>
     </View>
   );
 }
@@ -434,6 +399,4 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  actions: { flexDirection: 'row', gap: 8 },
-  action: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
 });

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Switch, Text, TextInput, Vibration, View } from 'react-native';
 
 import CategoryDropdown from '../components/CategoryDropdown';
+import { WhenField } from '../components/DateTimeSheet';
 import SavedIncomePicker from '../components/SavedIncomePicker';
 import { AnimatedBar, AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import {
@@ -32,7 +33,8 @@ type Props = {
   // Past savings + all income − all spending, or null when there's nothing to show yet.
   totalSavings: number | null;
   incomeSources: IncomeSource[];
-  onAdd: (e: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean) => void;
+  // `at` is the chosen date & time, or null for "now".
+  onAdd: (e: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean, at: number | null) => void;
   onViewAll: () => void;
   onSetBudget: () => void;
   onAddIncomeSource: () => void;
@@ -59,6 +61,7 @@ export default function AddScreen({
   const [category, setCategory] = useState(categoriesFor('expense')[0].name);
   const [repeat, setRepeat] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const [when, setWhen] = useState<number | null>(null);
   const [justAdded, setJustAdded] = useState(false);
   const [pop] = useState(() => new Animated.Value(0));
   const [today] = useState(() => new Date().getDate());
@@ -94,11 +97,13 @@ export default function AddScreen({
     onAdd(
       { item: item.trim(), amount: parsed, category, kind, ...(income && sourceId ? { incomeSourceId: sourceId } : {}) },
       repeat && !income,
+      when,
     );
     setItem('');
     setAmount('');
     setRepeat(false);
     setSourceId(null);
+    setWhen(null);
     setJustAdded(true);
     Vibration.vibrate(40);
     pop.setValue(0);
@@ -205,6 +210,9 @@ export default function AddScreen({
             style={[styles.input, { backgroundColor: t.input, borderColor: t.border, color: t.text }]}
           />
 
+          <Text style={[styles.label, { color: t.textMuted }]}>When</Text>
+          <WhenField theme={t} value={when} onChange={setWhen} />
+
           <Text style={[styles.label, { color: t.textMuted }]}>Category</Text>
           <CategoryDropdown theme={t} value={category} onChange={setCategory} options={categoriesFor(kind)} />
 
@@ -214,7 +222,9 @@ export default function AddScreen({
               <View style={{ flex: 1 }}>
                 <Text style={{ color: t.text, fontSize: 13, fontWeight: '600' }}>Repeat monthly</Text>
                 <Text style={{ color: t.textMuted, fontSize: 11 }}>
-                  {repeat ? `Logged automatically on the ${ordinal(today)} of every month` : 'For rent, bills and subscriptions'}
+                  {repeat
+                    ? `Logged automatically on the ${ordinal(when ? new Date(when).getDate() : today)} of every month`
+                    : 'For rent, bills and subscriptions'}
                 </Text>
               </View>
               <Switch

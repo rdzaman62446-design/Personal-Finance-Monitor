@@ -5,6 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { categoriesFor, Expense, isIncome, parseAmount } from '../expenses';
 import { Theme } from '../theme';
 import CategoryDropdown from './CategoryDropdown';
+import { WhenField } from './DateTimeSheet';
 
 type Props = {
   theme: Theme;
@@ -28,13 +29,14 @@ function EditForm({ theme: t, expense, onClose, onSave }: Props & { expense: Exp
   const [item, setItem] = useState(expense.item);
   const [amount, setAmount] = useState(expense.amount.toString());
   const [category, setCategory] = useState(expense.category);
+  const [timestamp, setTimestamp] = useState(expense.timestamp);
 
   const parsed = parseAmount(amount);
   const canSave = item.trim().length > 0 && parsed != null;
 
   const save = () => {
     if (!canSave) return;
-    onSave({ ...expense, item: item.trim(), amount: parsed, category });
+    onSave({ ...expense, item: item.trim(), amount: parsed, category, timestamp });
   };
 
   const inputStyle = [styles.input, { backgroundColor: t.input, borderColor: t.border, color: t.text }];
@@ -58,6 +60,9 @@ function EditForm({ theme: t, expense, onClose, onSave }: Props & { expense: Exp
         keyboardType="decimal-pad"
         style={[inputStyle, { fontWeight: '700', color: t.accent }]}
       />
+
+      <Text style={[styles.label, { color: t.textMuted }]}>When</Text>
+      <WhenField theme={t} value={timestamp} onChange={(ts) => setTimestamp(ts ?? Date.now())} allowNow={false} />
 
       <Text style={[styles.label, { color: t.textMuted }]}>Category</Text>
       <CategoryDropdown theme={t} value={category} onChange={setCategory} options={categoriesFor(expense.kind ?? 'expense')} />

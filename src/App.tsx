@@ -157,15 +157,19 @@ function Main() {
     return null;
   };
 
-  const addEntry = (raw: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean) => {
+  const addEntry = (raw: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean, at: number | null = null) => {
     const e = { ...raw, item: tidyText(raw.item) };
-    const ts = Date.now();
-    setNow(ts);
+    const created = Date.now();
+    // The entry's date: the one picked in the form, or now.
+    const ts = at ?? created;
+    const byNewest = (list: Expense[]) => list.sort((a, b) => b.timestamp - a.timestamp);
+    setNow(created);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (repeatMonthly) {
-      // This month's entry is logged now; the rule picks up from next month.
+      // The first entry is logged for the picked month; the rule then catches up and
+      // continues from the following month on the same day.
       const rule: Recurring = {
-        id: ts.toString(36),
+        id: created.toString(36),
         item: e.item,
         amount: e.amount,
         category: e.category,
@@ -173,14 +177,18 @@ function Main() {
         lastPosted: monthKey(monthOf(ts)),
       };
       setRecurring((prev) => [...prev, rule]);
-      setExpenses((prev) => [{ ...entryFor(rule, monthOf(ts)), timestamp: ts }, ...prev]);
+      setExpenses((prev) => byNewest([{ ...entryFor(rule, monthOf(ts)), timestamp: ts }, ...prev]));
     } else {
-      setExpenses((prev) => [{ ...e, id: ts.toString(), timestamp: ts }, ...prev]);
+      setExpenses((prev) => byNewest([{ ...e, id: created.toString(), timestamp: ts }, ...prev]));
     }
-    const warning = isIncome(e as Expense) ? null : budgetWarning(e);
+    // Budgets are monthly, so only warn about entries in the current month.
+    const thisMonth = isInMonth(ts, monthOf(created));
+    const warning = isIncome(e as Expense) || !thisMonth ? null : budgetWarning(e);
     if (warning) showToast(warning);
     else if (repeatMonthly) showToast(`"${e.item}" will be logged every month`);
+    else if (at != null) showToast(`Added for ${formatDate(ts)}`);
   };
+
 
   const deleteEntry = (target: Expense) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -193,7 +201,8 @@ function Main() {
 
   const saveEdit = (edited: Expense) => {
     const updated = { ...edited, item: tidyText(edited.item) };
-    setExpenses((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    // The date may have changed, so keep the list newest-first.
+    setExpenses((prev) => prev.map((e) => (e.id === updated.id ? updated : e)).sort((a, b) => b.timestamp - a.timestamp));
     setEditing(null);
     showToast('Changes saved');
   };
@@ -243,6 +252,25 @@ function Main() {
       ],
     );
   };
+
+  const clearAll = () =>
+    Alert.alert(
+      'Delete all entries?',
+      'Every expense, income entry and monthly expense will be removed. This cannot be undone — make a backup first if you might need them.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete all',
+          style: 'destructive',
+          onPress: () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setExpenses([]);
+            setRecurring([]);
+            showToast('All entries cleared');
+          },
+        },
+      ],
+    );
 
   const savePastSavings = (amount: number | null) => {
     setPastSavings(amount);
@@ -433,15 +461,6 @@ function Main() {
                   onSetBudget={() => setBudgetTarget({ category: null })}
                   onSetCategoryBudget={(category) => setBudgetTarget({ category })}
                   onDeleteRecurring={deleteRecurring}
-                  onBackup={backup}
-                  onRestore={restore}
-                  onImport={() => setImportOpen(true)}
-                  onClear={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setExpenses([]);
-                    setRecurring([]);
-                    showToast('All entries cleared');
-                  }}
                 />
               </Page>
             </Animated.ScrollView>
@@ -489,6 +508,7 @@ function Main() {
               { icon: 'file-plus', label: 'Import from spreadsheet', onPress: () => setImportOpen(true) },
               { icon: 'upload-cloud', label: 'Back up', onPress: backup },
               { icon: 'download-cloud', label: 'Restore backup', onPress: restore },
+              { icon: 'trash-2', label: 'Clear all data', onPress: clearAll, color: t.danger },
             ],
           },
         ]}
