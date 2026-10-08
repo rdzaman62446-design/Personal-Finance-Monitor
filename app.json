@@ -28,6 +28,15 @@
     },
     "plugins": [
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ee3c3bbd-08c2-4fa3-a482-bf1934ae69b0"
+      }
+    },
+    "owner": "nahin20ks-team",
+    "updates": {
+      "url": "https://u.expo.dev/ee3c3bbd-08c2-4fa3-a482-bf1934ae69b0"
+    }
   }
 }
