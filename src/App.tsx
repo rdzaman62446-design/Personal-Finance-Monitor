@@ -543,6 +543,7 @@ function Main() {
                   onSetBudget={() => setBudgetTarget({ category: null })}
                   onSetCategoryBudget={(category) => setBudgetTarget({ category })}
                   onDeleteRecurring={deleteRecurring}
+                  onEditEntry={setEditing}
                 />
               </Page>
             </Animated.ScrollView>

@@ -1,11 +1,15 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import DailyChart from '../components/DailyChart';
+import { ColumnChart3D } from '../components/charts/ColumnChart3D';
+import Gauge3D from '../components/charts/Gauge3D';
+import HBarChart3D from '../components/charts/HBarChart3D';
+import LineChart3D from '../components/charts/LineChart3D';
+import Pie3D from '../components/charts/Pie3D';
+import EntryList from '../components/EntryList';
 import { AnimatedBar, AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import {
-  categoriesFor,
   categoryColor,
   categoryIcon,
   daysInMonth,
@@ -43,6 +47,7 @@ type Props = {
   onSetBudget: () => void;
   onSetCategoryBudget: (category: string) => void;
   onDeleteRecurring: (rule: Recurring) => void;
+  onEditEntry: (e: Expense) => void;
 };
 
 export default function StatsScreen({
@@ -61,6 +66,7 @@ export default function StatsScreen({
   onSetBudget,
   onSetCategoryBudget,
   onDeleteRecurring,
+  onEditEntry,
 }: Props) {
   const [thisMonth] = useState(() => monthOf(Date.now()));
   const [todayOfMonth] = useState(() => new Date().getDate());
@@ -81,20 +87,7 @@ export default function StatsScreen({
   const change = prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null;
   const expenseCount = monthEntries.filter((e) => !isIncome(e)).length;
 
-  const categoryRows = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const e of monthEntries) if (!isIncome(e)) map[e.category] = (map[e.category] ?? 0) + e.amount;
-    // This month lists every category so budgets can be set before spending; past months only those used.
-    const names = isCurrent
-      ? Array.from(new Set([...categoriesFor('expense').map((c) => c.name), ...Object.keys(map)]))
-      : Object.keys(map);
-    return names
-      .map((name) => ({ name, total: map[name] ?? 0, share: spent > 0 ? ((map[name] ?? 0) / spent) * 100 : 0 }))
-      .sort((a, b) => b.total - a.total);
-  }, [monthEntries, spent, isCurrent]);
-
   const monthId = `${month.year}-${month.month}`;
-  const ratio = monthlyBudget ? spent / monthlyBudget : 0;
   const recurringTotal = recurring.reduce((s, r) => s + r.amount, 0);
   const allIncome = totalIncome(expenses);
   const allSpent = totalSpent(expenses);
@@ -110,18 +103,6 @@ export default function StatsScreen({
         { text: 'Stop', style: 'destructive', onPress: () => onDeleteRecurring(r) },
       ],
     );
-
-  const stat = (label: string, value: number, sub: string, color: string, delay: number, format = peso) => (
-    <FadeInView delay={delay} style={styles.statWrap}>
-      <View style={[styles.stat, { backgroundColor: t.card, borderColor: t.border }]}>
-        <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '500' }}>{label}</Text>
-        <AnimatedNumber value={value} format={format} numberOfLines={1} style={[styles.statValue, { color }]} />
-        <Text numberOfLines={1} style={{ color: t.textFaint, fontSize: 11, marginTop: 4 }}>
-          {sub}
-        </Text>
-      </View>
-    </FadeInView>
-  );
 
   const header = (icon: keyof typeof Feather.glyphMap, title: string, right?: string) => (
     <View style={styles.cardHeader}>
@@ -239,114 +220,29 @@ export default function StatsScreen({
         <Feather name="share-2" size={14} color={t.accent} />
       </PressableScale>
 
-      {/* Re-keyed per month so the whole section animates in when switching months. */}
-      <View key={monthId} style={{ gap: 16 }}>
-        <View style={styles.grid}>
-          {stat(
-            'Spent',
-            spent,
-            change == null
-              ? `${expenseCount} expenses`
-              : `${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${Math.abs(change).toFixed(0)}% vs last month`,
-            t.accent,
-            0,
-          )}
-          {stat('Income', income, income > 0 ? 'logged this month' : 'tap Income on Add', t.income, 60)}
-          {stat(
-            saved >= 0 ? 'Saved' : 'Overspent',
-            Math.abs(saved),
-            income > 0 ? `${((saved / income) * 100).toFixed(0)}% of income` : 'add income to see savings',
-            saved >= 0 ? t.accent : t.danger,
-            120,
-          )}
-          {stat('Daily Average', dailyAvg, isCurrent ? `over ${daysCounted} days so far` : `over ${daysCounted} days`, t.amber, 180)}
-        </View>
-
-        <FadeInView delay={200}>
-          <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
-            {header('bar-chart-2', 'Daily Spending')}
-            <DailyChart theme={t} expenses={monthEntries} month={month} today={isCurrent ? todayOfMonth : null} />
-          </View>
-        </FadeInView>
-
-        {isCurrent && (
-          <FadeInView delay={240}>
-            <Pressable onPress={onSetBudget} style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
-              <View style={styles.cardHeader}>
-                <View style={styles.row}>
-                  <Feather name="target" size={16} color={t.accent} />
-                  <Text style={[styles.cardTitle, { color: t.text }]}>Monthly Budget</Text>
-                </View>
-                <Text style={{ color: t.accent, fontSize: 12, fontWeight: '600' }}>{monthlyBudget ? 'Edit' : 'Set'}</Text>
-              </View>
-              {monthlyBudget ? (
-                <>
-                  <AnimatedBar percent={ratio * 100} color={budgetColor(t, ratio)} trackColor={t.border} height={10} />
-                  <Text style={{ color: t.textMuted, fontSize: 12 }}>
-                    {peso(spent)} of {peso(monthlyBudget)} · {(ratio * 100).toFixed(0)}% used
-                  </Text>
-                </>
-              ) : (
-                <Text style={{ color: t.textMuted, fontSize: 12 }}>Set a limit and watch the bar fill up as you spend.</Text>
-              )}
-            </Pressable>
-          </FadeInView>
-        )}
-
-        <FadeInView delay={280}>
-          <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
-            {header('pie-chart', 'By Category')}
-            {spent > 0 && (
-              <View style={styles.stacked}>
-                {categoryRows
-                  .filter((c) => c.total > 0)
-                  .map((c) => (
-                    <View key={c.name} style={{ flex: c.total, backgroundColor: categoryColor(c.name) }} />
-                  ))}
-              </View>
-            )}
-            {categoryRows.length === 0 ? (
-              <Text style={{ color: t.textFaint, fontSize: 12, textAlign: 'center', paddingVertical: 12 }}>
-                No spending in {monthLabel(month)}.
-              </Text>
-            ) : (
-              categoryRows.map((c, i) => {
-                const budget = isCurrent ? categoryBudgets[c.name] : undefined;
-                const r = budget ? c.total / budget : 0;
-                return (
-                  <Pressable
-                    key={c.name}
-                    disabled={!isCurrent}
-                    onPress={() => onSetCategoryBudget(c.name)}
-                    style={({ pressed }) => [{ gap: 6, opacity: pressed ? 0.6 : 1 }]}
-                  >
-                    <View style={styles.cardHeader}>
-                      <View style={[styles.row, { flex: 1 }]}>
-                        <View style={[styles.dot, { backgroundColor: categoryColor(c.name) }]} />
-                        <Text numberOfLines={1} style={{ color: t.text, fontSize: 12, fontWeight: '500', flexShrink: 1 }}>
-                          {categoryIcon(c.name)} {c.name}
-                        </Text>
-                      </View>
-                      <Text style={{ color: budget ? budgetColor(t, r) : t.textMuted, fontSize: 12 }}>
-                        {budget ? `${peso(c.total)} / ${peso(budget)}` : `${peso(c.total)} (${c.share.toFixed(0)}%)`}
-                      </Text>
-                    </View>
-                    <AnimatedBar
-                      percent={budget ? r * 100 : c.share}
-                      color={budget ? budgetColor(t, r) : categoryColor(c.name)}
-                      trackColor={t.border}
-                      delay={320 + i * 60}
-                    />
-                  </Pressable>
-                );
-              })
-            )}
-            {isCurrent && (
-              <Text style={{ color: t.textFaint, fontSize: 11, textAlign: 'center' }}>Tap a category to set its own budget</Text>
-            )}
-          </View>
-        </FadeInView>
-      </View>
+      {/* Re-keyed per month so the charts animate in and their selections reset when switching months. */}
+      <MonthCharts
+        key={monthId}
+        theme={t}
+        expenses={expenses}
+        monthEntries={monthEntries}
+        month={month}
+        isCurrent={isCurrent}
+        todayOfMonth={todayOfMonth}
+        spent={spent}
+        income={income}
+        saved={saved}
+        change={change}
+        dailyAvg={dailyAvg}
+        daysCounted={daysCounted}
+        expenseCount={expenseCount}
+        monthlyBudget={monthlyBudget}
+        categoryBudgets={categoryBudgets}
+        onSetBudget={onSetBudget}
+        onSetCategoryBudget={onSetCategoryBudget}
+        onPickMonth={setMonth}
+        onEditEntry={onEditEntry}
+      />
 
       <FadeInView delay={300}>
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
@@ -421,6 +317,319 @@ export default function StatsScreen({
   );
 }
 
+// Short amounts for chart labels: ₱850, ₱1.2k, ₱15k.
+const shortPeso = (n: number) =>
+  n >= 10000 ? `₱${Math.round(n / 1000)}k` : n >= 1000 ? `₱${(n / 1000).toFixed(1)}k` : `₱${Math.round(n)}`;
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+type ChartsProps = {
+  theme: Theme;
+  expenses: Expense[];
+  monthEntries: Expense[];
+  month: Month;
+  isCurrent: boolean;
+  todayOfMonth: number;
+  spent: number;
+  income: number;
+  saved: number;
+  change: number | null;
+  dailyAvg: number;
+  daysCounted: number;
+  expenseCount: number;
+  monthlyBudget: number | null;
+  categoryBudgets: Record<string, number>;
+  onSetBudget: () => void;
+  onSetCategoryBudget: (category: string) => void;
+  onPickMonth: (m: Month) => void;
+  onEditEntry: (e: Expense) => void;
+};
+
+// The month's charts. Each is a different chart type; tapping one shows the matching entries below it.
+function MonthCharts({
+  theme: t,
+  expenses,
+  monthEntries,
+  month,
+  isCurrent,
+  todayOfMonth,
+  spent,
+  income,
+  saved,
+  change,
+  dailyAvg,
+  daysCounted,
+  expenseCount,
+  monthlyBudget,
+  categoryBudgets,
+  onSetBudget,
+  onSetCategoryBudget,
+  onPickMonth,
+  onEditEntry,
+}: ChartsProps) {
+  const [overviewSel, setOverviewSel] = useState<string | null>(null);
+  const [categorySel, setCategorySel] = useState<string | null>(null);
+  const [daySel, setDaySel] = useState<string | null>(null);
+
+  const spending = useMemo(() => monthEntries.filter((e) => !isIncome(e)), [monthEntries]);
+  const incomes = useMemo(() => monthEntries.filter((e) => isIncome(e)), [monthEntries]);
+
+  const categories = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of spending) map[e.category] = (map[e.category] ?? 0) + e.amount;
+    return Object.entries(map)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [spending]);
+
+  const days = daysInMonth(month);
+  const daily = useMemo(() => {
+    const arr = new Array(days).fill(0) as number[];
+    for (const e of spending) arr[new Date(e.timestamp).getDate() - 1] += e.amount;
+    return arr;
+  }, [spending, days]);
+
+  const trend = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, i) => shiftMonth(month, i - 5)).map((m) => ({
+        m,
+        spent: totalSpent(expenses.filter((e) => isInMonth(e.timestamp, m))),
+      })),
+    [expenses, month],
+  );
+
+  const ratio = monthlyBudget ? spent / monthlyBudget : 0;
+  const selectedCategory = categories.find((c) => c.name === categorySel);
+  const catBudget = selectedCategory && isCurrent ? categoryBudgets[selectedCategory.name] : undefined;
+  const dayNumber = daySel ? parseInt(daySel, 10) : null;
+
+  const card = (children: ReactNode, delay: number) => (
+    <FadeInView delay={delay}>
+      <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>{children}</View>
+    </FadeInView>
+  );
+  const title = (icon: keyof typeof Feather.glyphMap, text: string, hint?: string) => (
+    <View style={styles.cardHeader}>
+      <View style={styles.row}>
+        <Feather name={icon} size={16} color={t.accent} />
+        <Text style={[styles.cardTitle, { color: t.text }]}>{text}</Text>
+      </View>
+      {hint && <Text style={{ color: t.textFaint, fontSize: 11 }}>{hint}</Text>}
+    </View>
+  );
+
+  return (
+    <View style={{ gap: 16 }}>
+      {/* Headline numbers as a compact strip. */}
+      <FadeInView>
+        <View style={[styles.strip, { backgroundColor: t.card, borderColor: t.border }]}>
+          <StripItem theme={t} label="Daily avg" value={shortPeso(dailyAvg)} sub={`${daysCounted} days`} color={t.amber} />
+          <View style={[styles.stripDivider, { backgroundColor: t.border }]} />
+          <StripItem theme={t} label="Entries" value={String(monthEntries.length)} sub={`${expenseCount} expenses`} color={t.text} />
+          <View style={[styles.stripDivider, { backgroundColor: t.border }]} />
+          <StripItem
+            theme={t}
+            label="vs last month"
+            value={change == null ? '—' : `${change > 0 ? '▲' : '▼'}${Math.abs(change).toFixed(0)}%`}
+            sub={change == null ? 'no data' : change > 0 ? 'more spent' : 'less spent'}
+            color={change == null ? t.textMuted : change > 0 ? t.danger : t.accent}
+          />
+        </View>
+      </FadeInView>
+
+      {/* 1. Overview — 3D columns */}
+      {card(
+        <>
+          {title('layers', 'Overview', 'tap a column')}
+          <ColumnChart3D
+            theme={t}
+            items={[
+              { key: 'spent', value: spent, color: t.accent, top: shortPeso(spent), caption: 'Spent' },
+              { key: 'income', value: income, color: t.income, top: shortPeso(income), caption: 'Income' },
+              {
+                key: 'saved',
+                value: Math.abs(saved),
+                color: saved >= 0 ? t.amber : t.danger,
+                top: `${saved < 0 ? '−' : ''}${shortPeso(Math.abs(saved))}`,
+                caption: saved >= 0 ? 'Saved' : 'Short',
+              },
+            ]}
+            height={120}
+            barWidth={46}
+            depth={14}
+            gap={34}
+            selectedKey={overviewSel}
+            onSelect={setOverviewSel}
+          />
+          {overviewSel === 'spent' && (
+            <EntryList theme={t} title={`BIGGEST EXPENSES · ${peso(spent)}`} entries={[...spending].sort((a, b) => b.amount - a.amount)} onEdit={onEditEntry} />
+          )}
+          {overviewSel === 'income' && (
+            <EntryList theme={t} title={`INCOME · ${peso(income)}`} entries={incomes} onEdit={onEditEntry} />
+          )}
+          {overviewSel === 'saved' && (
+            <FadeInView from={-8} style={[styles.note, { backgroundColor: t.cardAlt, borderColor: t.border }]}>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>
+                {income > 0
+                  ? `${peso(income)} income − ${peso(spent)} spent = ${saved < 0 ? '−' : ''}${peso(Math.abs(saved))} (${((saved / income) * 100).toFixed(0)}% of income)`
+                  : 'Log your income to see how much you saved this month.'}
+              </Text>
+            </FadeInView>
+          )}
+        </>,
+        60,
+      )}
+
+      {/* 2. Budget — 3D gauge */}
+      {isCurrent &&
+        card(
+          <Pressable onPress={onSetBudget} style={{ gap: 10 }}>
+            {title('target', 'Monthly Budget', monthlyBudget ? 'tap to edit' : 'tap to set')}
+            {monthlyBudget ? (
+              <Gauge3D
+                theme={t}
+                ratio={ratio}
+                color={budgetColor(t, ratio)}
+                center={`${Math.round(ratio * 100)}%`}
+                caption={ratio <= 1 ? `${peso(monthlyBudget - spent)} left of ${shortPeso(monthlyBudget)}` : `${peso(spent - monthlyBudget)} over budget`}
+              />
+            ) : (
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>Set a monthly limit to get a spending gauge here.</Text>
+            )}
+          </Pressable>,
+          120,
+        )}
+
+      {/* 3. By category — 3D pie */}
+      {card(
+        <>
+          {title('pie-chart', 'By Category', categories.length ? 'tap a slice' : undefined)}
+          {categories.length === 0 ? (
+            <Text style={{ color: t.textFaint, fontSize: 12, textAlign: 'center', paddingVertical: 12 }}>No spending in {monthLabel(month)}.</Text>
+          ) : (
+            <>
+              <Pie3D
+                theme={t}
+                slices={categories.map((c) => ({ key: c.name, value: c.total, color: categoryColor(c.name), label: categoryIcon(c.name) }))}
+                selectedKey={categorySel}
+                onSelect={setCategorySel}
+              />
+              {/* Legend doubles as a slice picker. */}
+              <View style={styles.legend}>
+                {categories.map((c) => {
+                  const active = c.name === categorySel;
+                  return (
+                    <Pressable
+                      key={c.name}
+                      onPress={() => setCategorySel(active ? null : c.name)}
+                      style={[styles.legendItem, { borderColor: active ? categoryColor(c.name) : t.border, backgroundColor: active ? t.cardAlt : 'transparent' }]}
+                    >
+                      <View style={[styles.dot, { backgroundColor: categoryColor(c.name) }]} />
+                      <Text numberOfLines={1} style={{ color: t.text, fontSize: 11, fontWeight: active ? '800' : '500', flexShrink: 1 }}>
+                        {categoryIcon(c.name)} {c.name}
+                      </Text>
+                      <Text style={{ color: t.textMuted, fontSize: 11 }}>{shortPeso(c.total)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
+          {selectedCategory && (
+            <FadeInView from={-8} style={{ gap: 8 }}>
+              {isCurrent && (
+                <Pressable onPress={() => onSetCategoryBudget(selectedCategory.name)} style={[styles.note, { backgroundColor: t.cardAlt, borderColor: t.border, gap: 6 }]}>
+                  <View style={styles.cardHeader}>
+                    <Text style={{ color: t.text, fontSize: 12, fontWeight: '700' }}>
+                      {catBudget ? `Budget: ${peso(selectedCategory.total)} of ${peso(catBudget)}` : `No budget for ${selectedCategory.name}`}
+                    </Text>
+                    <Text style={{ color: t.accent, fontSize: 12, fontWeight: '700' }}>{catBudget ? 'Edit' : 'Set budget'}</Text>
+                  </View>
+                  {catBudget != null && (
+                    <AnimatedBar
+                      percent={(selectedCategory.total / catBudget) * 100}
+                      color={budgetColor(t, selectedCategory.total / catBudget)}
+                      trackColor={t.border}
+                    />
+                  )}
+                </Pressable>
+              )}
+              <EntryList
+                theme={t}
+                title={`${categoryIcon(selectedCategory.name)} ${selectedCategory.name.toUpperCase()} · ${peso(selectedCategory.total)} · ${spent > 0 ? Math.round((selectedCategory.total / spent) * 100) : 0}%`}
+                entries={spending.filter((e) => e.category === selectedCategory.name)}
+                onEdit={onEditEntry}
+              />
+            </FadeInView>
+          )}
+        </>,
+        180,
+      )}
+
+      {/* 4. Daily — raised line & area */}
+      {card(
+        <>
+          {title('activity', 'Daily Spending', 'tap a day')}
+          <LineChart3D
+            theme={t}
+            points={daily.map((v, i) => ({ key: String(i + 1), value: v, label: String(i + 1) }))}
+            color={t.accent}
+            selectedKey={daySel}
+            onSelect={setDaySel}
+            highlightKey={isCurrent ? String(todayOfMonth) : null}
+            formatValue={(v) => peso(v)}
+            axisLabels={[0, 4, 9, 14, 19, 24, days - 1]}
+          />
+          {dayNumber != null && (
+            <EntryList
+              theme={t}
+              title={`${new Date(month.year, month.month, dayNumber).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()} · ${peso(daily[dayNumber - 1])}`}
+              entries={monthEntries.filter((e) => new Date(e.timestamp).getDate() === dayNumber)}
+              onEdit={onEditEntry}
+            />
+          )}
+        </>,
+        240,
+      )}
+
+      {/* 5. Six-month trend — horizontal 3D bars */}
+      {card(
+        <>
+          {title('trending-up', '6-Month Trend', 'tap to open month')}
+          <HBarChart3D
+            theme={t}
+            rows={trend.map(({ m, spent: v }) => ({
+              key: `${m.year}-${m.month}`,
+              label: MONTH_SHORT[m.month],
+              value: v,
+              color: t.accent,
+              valueLabel: shortPeso(v),
+            }))}
+            selectedKey={`${month.year}-${month.month}`}
+            onSelect={(key) => {
+              const [y, mo] = key.split('-').map(Number);
+              onPickMonth({ year: y, month: mo });
+            }}
+          />
+        </>,
+        300,
+      )}
+    </View>
+  );
+}
+
+function StripItem({ theme: t, label, value, sub, color }: { theme: Theme; label: string; value: string; sub: string; color: string }) {
+  return (
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <Text style={{ color: t.textFaint, fontSize: 10 }}>{label}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color, fontSize: 16, fontWeight: '800' }}>
+        {value}
+      </Text>
+      <Text style={{ color: t.textFaint, fontSize: 10 }}>{sub}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   monthBar: {
     flexDirection: 'row',
@@ -431,15 +640,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   arrow: { padding: 8 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  statWrap: { width: '47.5%', flexGrow: 1 },
-  stat: { padding: 16, borderRadius: 16, borderWidth: 1 },
-  statValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   card: { padding: 18, borderRadius: 18, borderWidth: 1, gap: 12 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { fontWeight: '600', fontSize: 14 },
-  stacked: { flexDirection: 'row', height: 14, borderRadius: 999, overflow: 'hidden', gap: 2 },
+  strip: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
+  stripDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch' },
+  note: { padding: 12, borderRadius: 12, borderWidth: 1 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, borderWidth: 1, maxWidth: '100%' },
   dot: { width: 8, height: 8, borderRadius: 4 },
   summaryBtn: {
     flexDirection: 'row',
