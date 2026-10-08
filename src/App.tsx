@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,6 +23,7 @@ import BudgetModal from './components/BudgetModal';
 import EditModal from './components/EditModal';
 import ImportModal from './components/ImportModal';
 import IncomeSourceModal from './components/IncomeSourceModal';
+import SideMenu from './components/SideMenu';
 import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
 import {
@@ -82,6 +82,7 @@ function Main() {
   const [budgetTarget, setBudgetTarget] = useState<{ category: string | null } | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [pastSavingsOpen, setPastSavingsOpen] = useState(false);
   // The income source being edited: { source: null } adds a new one.
   const [sourceTarget, setSourceTarget] = useState<{ source: IncomeSource | null } | null>(null);
@@ -333,23 +334,13 @@ function Main() {
       <StatusBar style={darkMode ? 'light' : 'dark'} />
 
       <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border }]}>
-        <View style={[styles.row, { flex: 1 }]}>
-          <View style={[styles.logo, { backgroundColor: t.accentSoft }]}>
-            <Feather name="credit-card" size={18} color={t.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: t.text, fontWeight: '700', fontSize: 17 }}>SpendTrack</Text>
-            <Text numberOfLines={1} style={{ color: t.textMuted, fontSize: 10, fontWeight: '500' }}>
-              PHP (₱) Quick Logger · {versionLabel()}
-            </Text>
-          </View>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => setMenuOpen(true)} style={styles.menuBtn}>
+          <Feather name="menu" size={22} color={t.text} />
+        </PressableScale>
+        <View style={[styles.logo, { backgroundColor: t.accentSoft }]}>
+          <Feather name="credit-card" size={16} color={t.accent} />
         </View>
-        <View style={styles.row}>
-          <PressableScale scaleTo={0.85} onPress={exportCSV} style={[styles.iconBtn, { borderColor: t.border }]}>
-            <Feather name="download" size={16} color={t.textMuted} />
-          </PressableScale>
-          <ThemeToggle darkMode={darkMode} onToggle={() => setDarkMode(!darkMode)} border={t.border} amber={t.amber} muted={t.textMuted} />
-        </View>
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 18 }}>SpendTrack</Text>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -418,6 +409,41 @@ function Main() {
 
       <Toast theme={t} toast={toast} onHide={hideToast} />
       <EditModal theme={t} expense={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
+      <SideMenu
+        theme={t}
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        darkMode={darkMode}
+        onToggleTheme={() => setDarkMode(!darkMode)}
+        footer={`SpendTrack ${versionLabel()}`}
+        sections={[
+          {
+            title: 'GO TO',
+            items: [
+              { icon: 'plus-circle', label: 'Add Log', onPress: () => switchTab('add') },
+              { icon: 'list', label: 'Table Log', onPress: () => switchTab('history') },
+              { icon: 'bar-chart-2', label: 'Stats', onPress: () => switchTab('stats') },
+            ],
+          },
+          {
+            title: 'MONEY',
+            items: [
+              { icon: 'target', label: 'Monthly budget', onPress: () => setBudgetTarget({ category: null }) },
+              { icon: 'briefcase', label: 'Add income source', onPress: () => setSourceTarget({ source: null }) },
+              { icon: 'trending-up', label: 'Past savings', onPress: () => setPastSavingsOpen(true) },
+            ],
+          },
+          {
+            title: 'DATA',
+            items: [
+              { icon: 'download', label: 'Export to CSV', onPress: exportCSV },
+              { icon: 'file-plus', label: 'Import from spreadsheet', onPress: () => setImportOpen(true) },
+              { icon: 'upload-cloud', label: 'Back up', onPress: backup },
+              { icon: 'download-cloud', label: 'Restore backup', onPress: restore },
+            ],
+          },
+        ]}
+      />
       <IncomeSourceModal
         theme={t}
         visible={sourceTarget != null}
@@ -507,50 +533,19 @@ function Page({ width, children }: { width: number; children: ReactNode }) {
   );
 }
 
-// Sun/moon button that spins when switching themes.
-function ThemeToggle({
-  darkMode,
-  onToggle,
-  border,
-  amber,
-  muted,
-}: {
-  darkMode: boolean;
-  onToggle: () => void;
-  border: string;
-  amber: string;
-  muted: string;
-}) {
-  const [spin] = useState(() => new Animated.Value(0));
-  const press = () => {
-    spin.setValue(0);
-    Animated.timing(spin, { toValue: 1, duration: 450, useNativeDriver: true }).start();
-    onToggle();
-  };
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['-180deg', '0deg'] });
-  return (
-    <Pressable onPress={press} style={[styles.iconBtn, { borderColor: border }]}>
-      <Animated.View style={{ transform: [{ rotate }] }}>
-        <Feather name={darkMode ? 'sun' : 'moon'} size={16} color={darkMode ? amber : muted} />
-      </Animated.View>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logo: { padding: 8, borderRadius: 12 },
-  iconBtn: { padding: 8, borderRadius: 10, borderWidth: 1 },
+  logo: { padding: 7, borderRadius: 10 },
+  menuBtn: { padding: 4, marginRight: 4 },
   content: { padding: 16, paddingBottom: 32, width: '100%', maxWidth: 520, alignSelf: 'center' },
   nav: { borderTopWidth: 1 },
   navInner: { flexDirection: 'row', paddingVertical: 6 },
