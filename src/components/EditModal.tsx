@@ -2,8 +2,9 @@ import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { CATEGORIES, Expense, parseAmount } from '../expenses';
+import { Expense, parseAmount } from '../expenses';
 import { Theme } from '../theme';
+import CategoryDropdown from './CategoryDropdown';
 
 type Props = {
   theme: Theme;
@@ -59,25 +60,7 @@ function EditForm({ theme: t, expense, onClose, onSave }: Props & { expense: Exp
       />
 
       <Text style={[styles.label, { color: t.textMuted }]}>Category</Text>
-      <View style={styles.grid}>
-        {CATEGORIES.map((c) => {
-          const active = c.name === category;
-          return (
-            <Pressable
-              key={c.name}
-              onPress={() => setCategory(c.name)}
-              style={[
-                styles.chip,
-                { borderColor: active ? t.accent : t.border, backgroundColor: active ? t.accentSoft : t.input },
-              ]}
-            >
-              <Text numberOfLines={1} style={{ fontSize: 12, color: active ? t.accent : t.textMuted }}>
-                {c.icon} {c.name}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <CategoryDropdown theme={t} value={category} onChange={setCategory} />
 
       <View style={styles.actions}>
         <Pressable onPress={onClose} style={[styles.btn, { borderColor: t.border, borderWidth: 1 }]}>
@@ -101,8 +84,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   label: { fontSize: 12, marginTop: 6 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { width: '48.5%', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
   btn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
 });

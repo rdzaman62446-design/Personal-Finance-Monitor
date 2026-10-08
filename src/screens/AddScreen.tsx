@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 
+import CategoryDropdown from '../components/CategoryDropdown';
 import { AnimatedBar, AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import { CATEGORIES, categoryIcon, Expense, formatDate, formatDay, formatTime, parseAmount, peso } from '../expenses';
 import { budgetColor, Theme } from '../theme';
@@ -119,26 +120,7 @@ export default function AddScreen({
           />
 
           <Text style={[styles.label, { color: t.textMuted }]}>Category</Text>
-          <View style={styles.grid}>
-            {CATEGORIES.map((c) => {
-              const active = c.name === category;
-              return (
-                <PressableScale
-                  key={c.name}
-                  onPress={() => setCategory(c.name)}
-                  style={[
-                    styles.chip,
-                    { borderColor: active ? t.accent : t.border, backgroundColor: active ? t.accentSoft : t.input },
-                  ]}
-                >
-                  <Text>{c.icon}</Text>
-                  <Text numberOfLines={1} style={[styles.chipText, { color: active ? t.accent : t.textMuted }]}>
-                    {c.name}
-                  </Text>
-                </PressableScale>
-              );
-            })}
-          </View>
+          <CategoryDropdown theme={t} value={category} onChange={setCategory} />
 
           <PressableScale
             onPress={submit}
@@ -218,18 +200,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '500', marginTop: 8 },
   amountInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 24, fontWeight: '800' },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    width: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  chipText: { fontSize: 12, fontWeight: '500', flexShrink: 1 },
   submit: {
     marginTop: 12,
     paddingVertical: 14,
