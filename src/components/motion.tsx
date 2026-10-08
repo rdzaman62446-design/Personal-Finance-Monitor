@@ -83,9 +83,13 @@ export function AnimatedNumber({
     Animated.timing(anim, {
       toValue: value,
       duration: 700,
-      easing: Easing.out(Easing.exp),
+      // poly(4) ends exactly at 1. (Easing.exp stops at 0.999, showing ₱99.90 for ₱100.)
+      easing: Easing.out(Easing.poly(4)),
       useNativeDriver: false,
-    }).start();
+    }).start(({ finished }) => {
+      // Land on the exact value so rounding in the animation never shows.
+      if (finished) setDisplay(value);
+    });
   }, [anim, value]);
   return (
     <Text style={style} numberOfLines={numberOfLines}>
