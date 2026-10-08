@@ -57,3 +57,28 @@ export const toCSV = (expenses: Expense[]) => {
   );
   return [headers.join(','), ...rows].join('\n');
 };
+
+// Months are identified by year and month index, e.g. { year: 2026, month: 9 } for Oct 2026.
+export type Month = { year: number; month: number };
+
+export const monthOf = (ts: number): Month => {
+  const d = new Date(ts);
+  return { year: d.getFullYear(), month: d.getMonth() };
+};
+
+export const shiftMonth = ({ year, month }: Month, delta: number): Month => {
+  const d = new Date(year, month + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() };
+};
+
+export const isInMonth = (ts: number, m: Month) => {
+  const d = new Date(ts);
+  return d.getFullYear() === m.year && d.getMonth() === m.month;
+};
+
+export const sameMonth = (a: Month, b: Month) => a.year === b.year && a.month === b.month;
+
+export const monthLabel = ({ year, month }: Month) =>
+  new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+export const daysInMonth = ({ year, month }: Month) => new Date(year, month + 1, 0).getDate();

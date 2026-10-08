@@ -2,12 +2,28 @@ import { Feather } from '@expo/vector-icons';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  Animated,
+  AppState,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import { pickBackup, shareBackup } from './backup';
+import BudgetModal from './components/BudgetModal';
 import EditModal from './components/EditModal';
-import { Expense, isSameDay, toCSV } from './expenses';
+import { FadeInView, PressableScale } from './components/motion';
+import Toast, { ToastData } from './components/Toast';
+import { Expense, isInMonth, isSameDay, monthOf, toCSV } from './expenses';
 import AddScreen from './screens/AddScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import StatsScreen from './screens/StatsScreen';
@@ -36,29 +52,71 @@ function Main() {
 
   const [expenses, setExpenses] = usePersistentState<Expense[]>('spendtrack.expenses', []);
   const [darkMode, setDarkMode] = usePersistentState('spendtrack.darkMode', true);
+  const [monthlyBudget, setMonthlyBudget] = usePersistentState<number | null>('spendtrack.monthlyBudget', null);
   const [tab, setTab] = useState<Tab>('add');
   const [editing, setEditing] = useState<Expense | null>(null);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [toast, setToast] = useState<ToastData | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const t = darkMode ? darkTheme : lightTheme;
 
-  const totalSpent = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
-  const spentToday = useMemo(() => {
-    const now = Date.now();
-    return expenses.filter((e) => isSameDay(e.timestamp, now)).reduce((s, e) => s + e.amount, 0);
-  }, [expenses]);
+  // "Now" for the Today / This Month totals; refreshed when the app comes back
+  // to the foreground or an expense is added, so it rolls over at midnight.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => state === 'active' && setNow(Date.now()));
+    return () => sub.remove();
+  }, []);
+
+  const spentToday = useMemo(
+    () => expenses.filter((e) => isSameDay(e.timestamp, now)).reduce((s, e) => s + e.amount, 0),
+    [expenses, now],
+  );
+  const spentThisMonth = useMemo(() => {
+    const m = monthOf(now);
+    return expenses.filter((e) => isInMonth(e.timestamp, m)).reduce((s, e) => s + e.amount, 0);
+  }, [expenses, now]);
+
+  const showToast = (message: string, actionLabel?: string, onAction?: () => void) =>
+    setToast({ id: Date.now(), message, actionLabel, onAction });
+  const hideToast = useCallback(() => setToast(null), []);
+
+  const switchTab = (next: Tab) => {
+    setTab(next);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
 
   const addExpense = (e: Omit<Expense, 'id' | 'timestamp'>) => {
-    const now = Date.now();
-    setExpenses((prev) => [{ ...e, id: now.toString(), timestamp: now }, ...prev]);
+    const ts = Date.now();
+    setNow(ts);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpenses((prev) => [{ ...e, id: ts.toString(), timestamp: ts }, ...prev]);
+  };
+
+  const deleteExpense = (target: Expense) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpenses((prev) => prev.filter((e) => e.id !== target.id));
+    showToast(`Deleted "${target.item}"`, 'UNDO', () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
+      setExpenses((prev) => [...prev, target].sort((a, b) => b.timestamp - a.timestamp));
+    });
   };
 
   const saveEdit = (updated: Expense) => {
     setExpenses((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
     setEditing(null);
+    showToast('Changes saved');
+  };
+
+  const saveBudget = (budget: number | null) => {
+    setMonthlyBudget(budget);
+    setBudgetOpen(false);
+    showToast(budget ? 'Monthly budget saved' : 'Monthly budget removed');
   };
 
   const exportCSV = async () => {
     if (expenses.length === 0) {
-      Alert.alert('Nothing to export', 'Add an expense first.');
+      showToast('Nothing to export yet');
       return;
     }
     try {
@@ -71,79 +129,190 @@ function Main() {
     }
   };
 
+  const backup = async () => {
+    try {
+      await shareBackup({ expenses, monthlyBudget });
+    } catch (err) {
+      Alert.alert('Backup failed', String(err));
+    }
+  };
+
+  const restore = async () => {
+    try {
+      const data = await pickBackup();
+      if (!data) return;
+      const apply = (next: Expense[]) => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setExpenses(next.sort((a, b) => b.timestamp - a.timestamp));
+        if (data.monthlyBudget != null) setMonthlyBudget(data.monthlyBudget);
+        showToast(`Restored ${data.expenses.length} expenses`);
+      };
+      Alert.alert(
+        'Restore backup?',
+        `The backup has ${data.expenses.length} expenses. You currently have ${expenses.length}.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Merge',
+            onPress: () => {
+              const ids = new Set(expenses.map((e) => e.id));
+              apply([...expenses, ...data.expenses.filter((e) => !ids.has(e.id))]);
+            },
+          },
+          { text: 'Replace', style: 'destructive', onPress: () => apply([...data.expenses]) },
+        ],
+      );
+    } catch (err) {
+      Alert.alert('Restore failed', err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar style={darkMode ? 'light' : 'dark'} />
 
       <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border }]}>
-        <View style={styles.row}>
+        <View style={[styles.row, { flex: 1 }]}>
           <View style={[styles.logo, { backgroundColor: t.accentSoft }]}>
             <Feather name="credit-card" size={18} color={t.accent} />
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontWeight: '700', fontSize: 17 }}>SpendTrack</Text>
-            <Text style={{ color: t.textMuted, fontSize: 10, fontWeight: '500' }}>
+            <Text numberOfLines={1} style={{ color: t.textMuted, fontSize: 10, fontWeight: '500' }}>
               PHP (₱) Quick Logger · {versionLabel()}
             </Text>
           </View>
         </View>
         <View style={styles.row}>
-          <Pressable onPress={exportCSV} style={[styles.iconBtn, { borderColor: t.border }]}>
+          <PressableScale scaleTo={0.85} onPress={exportCSV} style={[styles.iconBtn, { borderColor: t.border }]}>
             <Feather name="download" size={16} color={t.textMuted} />
-          </Pressable>
-          <Pressable onPress={() => setDarkMode(!darkMode)} style={[styles.iconBtn, { borderColor: t.border }]}>
-            <Feather name={darkMode ? 'sun' : 'moon'} size={16} color={darkMode ? t.amber : t.textMuted} />
-          </Pressable>
+          </PressableScale>
+          <ThemeToggle darkMode={darkMode} onToggle={() => setDarkMode(!darkMode)} border={t.border} amber={t.amber} muted={t.textMuted} />
         </View>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {tab === 'add' && (
-            <AddScreen
-              theme={t}
-              expenses={expenses}
-              spentToday={spentToday}
-              totalSpent={totalSpent}
-              onAdd={addExpense}
-              onViewAll={() => setTab('history')}
-            />
-          )}
-          {tab === 'history' && (
-            <HistoryScreen
-              theme={t}
-              expenses={expenses}
-              onEdit={setEditing}
-              onDelete={(id) => setExpenses((prev) => prev.filter((e) => e.id !== id))}
-            />
-          )}
-          {tab === 'stats' && (
-            <StatsScreen
-              theme={t}
-              expenses={expenses}
-              spentToday={spentToday}
-              totalSpent={totalSpent}
-              onClear={() => setExpenses([])}
-            />
-          )}
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* Re-keyed per tab so each screen animates in when selected. */}
+          <FadeInView key={tab} from={20}>
+            {tab === 'add' && (
+              <AddScreen
+                theme={t}
+                expenses={expenses}
+                spentToday={spentToday}
+                spentThisMonth={spentThisMonth}
+                monthlyBudget={monthlyBudget}
+                onAdd={addExpense}
+                onViewAll={() => switchTab('history')}
+                onSetBudget={() => setBudgetOpen(true)}
+              />
+            )}
+            {tab === 'history' && (
+              <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteExpense} />
+            )}
+            {tab === 'stats' && (
+              <StatsScreen
+                theme={t}
+                expenses={expenses}
+                monthlyBudget={monthlyBudget}
+                onSetBudget={() => setBudgetOpen(true)}
+                onBackup={backup}
+                onRestore={restore}
+                onClear={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setExpenses([]);
+                  showToast('All expenses cleared');
+                }}
+              />
+            )}
+          </FadeInView>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <SafeAreaView edges={['bottom']} style={[styles.nav, { backgroundColor: t.card, borderTopColor: t.border }]}>
+      <TabBar tab={tab} onChange={switchTab} theme={t} />
+
+      <Toast theme={t} toast={toast} onHide={hideToast} />
+      <EditModal theme={t} expense={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
+      <BudgetModal
+        theme={t}
+        visible={budgetOpen}
+        current={monthlyBudget}
+        onClose={() => setBudgetOpen(false)}
+        onSave={saveBudget}
+      />
+    </SafeAreaView>
+  );
+}
+
+// Bottom navigation with a pill that slides to the active tab.
+function TabBar({ tab, onChange, theme: t }: { tab: Tab; onChange: (t: Tab) => void; theme: typeof darkTheme }) {
+  const [width, setWidth] = useState(0);
+  const index = TABS.findIndex((x) => x.key === tab);
+  const [pos] = useState(() => new Animated.Value(index));
+
+  useEffect(() => {
+    Animated.spring(pos, { toValue: index, useNativeDriver: true, speed: 16, bounciness: 9 }).start();
+  }, [index, pos]);
+
+  const tabWidth = width / TABS.length;
+
+  return (
+    <SafeAreaView edges={['bottom']} style={[styles.nav, { backgroundColor: t.card, borderTopColor: t.border }]}>
+      <View style={styles.navInner} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+        {width > 0 && (
+          <Animated.View
+            style={[
+              styles.navPill,
+              {
+                width: tabWidth - 24,
+                backgroundColor: t.accentSoft,
+                transform: [{ translateX: Animated.add(Animated.multiply(pos, tabWidth), 12) }],
+              },
+            ]}
+          />
+        )}
         {TABS.map(({ key, label, icon }) => {
           const active = tab === key;
           const color = active ? t.accent : t.textMuted;
           return (
-            <Pressable key={key} onPress={() => setTab(key)} style={styles.navBtn}>
+            <PressableScale key={key} scaleTo={0.88} onPress={() => onChange(key)} style={styles.navBtn}>
               <Feather name={icon} size={20} color={color} />
               <Text style={{ color, fontSize: 11, fontWeight: active ? '700' : '400' }}>{label}</Text>
-            </Pressable>
+            </PressableScale>
           );
         })}
-      </SafeAreaView>
-
-      <EditModal theme={t} expense={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
+      </View>
     </SafeAreaView>
+  );
+}
+
+// Sun/moon button that spins when switching themes.
+function ThemeToggle({
+  darkMode,
+  onToggle,
+  border,
+  amber,
+  muted,
+}: {
+  darkMode: boolean;
+  onToggle: () => void;
+  border: string;
+  amber: string;
+  muted: string;
+}) {
+  const [spin] = useState(() => new Animated.Value(0));
+  const press = () => {
+    spin.setValue(0);
+    Animated.timing(spin, { toValue: 1, duration: 450, useNativeDriver: true }).start();
+    onToggle();
+  };
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['-180deg', '0deg'] });
+  return (
+    <Pressable onPress={press} style={[styles.iconBtn, { borderColor: border }]}>
+      <Animated.View style={{ transform: [{ rotate }] }}>
+        <Feather name={darkMode ? 'sun' : 'moon'} size={16} color={darkMode ? amber : muted} />
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -153,6 +322,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
@@ -161,6 +331,8 @@ const styles = StyleSheet.create({
   logo: { padding: 8, borderRadius: 12 },
   iconBtn: { padding: 8, borderRadius: 10, borderWidth: 1 },
   content: { padding: 16, paddingBottom: 32, width: '100%', maxWidth: 520, alignSelf: 'center' },
-  nav: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, paddingTop: 8 },
-  navBtn: { alignItems: 'center', gap: 2, paddingHorizontal: 16, paddingBottom: 6 },
+  nav: { borderTopWidth: 1 },
+  navInner: { flexDirection: 'row', paddingVertical: 6 },
+  navPill: { position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 14 },
+  navBtn: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 6 },
 });

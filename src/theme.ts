@@ -48,3 +48,7 @@ export const lightTheme: Theme = {
   amber: '#d97706',
   purple: '#9333ea',
 };
+
+// Green under 75% of budget, amber up to 100%, red when over.
+export const budgetColor = (t: Theme, ratio: number) =>
+  ratio >= 1 ? t.danger : ratio >= 0.75 ? t.amber : t.accent;
