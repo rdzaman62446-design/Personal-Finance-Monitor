@@ -33,13 +33,32 @@ export const INCOME_CATEGORIES: Category[] = [
   { name: 'Other Income', icon: '💰', color: '#4ade80' },
 ];
 
-const ALL_CATEGORIES = [...CATEGORIES, ...INCOME_CATEGORIES];
+// Categories the user added themselves (☰ → Categories).
+export type CustomCategory = Category & { kind: Kind };
 
-export const categoriesFor = (kind: Kind) => (kind === 'income' ? INCOME_CATEGORIES : CATEGORIES);
+// Registry of custom categories, set by the app whenever they change, so every
+// category lookup below includes them without threading them through each screen.
+let customCategories: CustomCategory[] = [];
+export const setCustomCategories = (list: CustomCategory[]) => {
+  customCategories = list;
+};
 
-export const categoryIcon = (name: string) => ALL_CATEGORIES.find((c) => c.name === name)?.icon ?? '📦';
+export const categoriesFor = (kind: Kind): Category[] => [
+  ...(kind === 'income' ? INCOME_CATEGORIES : CATEGORIES),
+  ...customCategories.filter((c) => c.kind === kind),
+];
 
-export const categoryColor = (name: string) => ALL_CATEGORIES.find((c) => c.name === name)?.color ?? '#94a3b8';
+const findCategory = (name: string) =>
+  CATEGORIES.find((c) => c.name === name) ??
+  INCOME_CATEGORIES.find((c) => c.name === name) ??
+  customCategories.find((c) => c.name === name);
+
+export const categoryIcon = (name: string) => findCategory(name)?.icon ?? '📦';
+
+export const categoryColor = (name: string) => findCategory(name)?.color ?? '#94a3b8';
+
+export const isBuiltInCategory = (name: string) =>
+  CATEGORIES.some((c) => c.name === name) || INCOME_CATEGORIES.some((c) => c.name === name);
 
 export const isIncome = (e: Expense) => e.kind === 'income';
 

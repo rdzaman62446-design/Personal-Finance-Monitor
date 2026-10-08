@@ -1,7 +1,8 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
-import { Expense } from './expenses';
+import { CustomCategory, Expense } from './expenses';
+import { Goal } from './goals';
 import { IncomeSource } from './incomeSources';
 import { Recurring } from './recurring';
 
@@ -14,6 +15,8 @@ export type BackupData = {
   recurring: Recurring[];
   incomeSources: IncomeSource[];
   pastSavings: number | null;
+  customCategories: CustomCategory[];
+  goals: Goal[];
 };
 
 // Writes all data to a JSON file and opens the share sheet so it can be saved
@@ -22,7 +25,7 @@ export async function shareBackup(data: BackupData) {
   const stamp = new Date().toISOString().slice(0, 10);
   const file = new File(Paths.cache, `SpendTrack_Backup_${stamp}.json`);
   file.create({ overwrite: true });
-  file.write(JSON.stringify({ format: BACKUP_FORMAT, version: 3, exportedAt: Date.now(), ...data }, null, 2));
+  file.write(JSON.stringify({ format: BACKUP_FORMAT, version: 4, exportedAt: Date.now(), ...data }, null, 2));
   await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save SpendTrack backup' });
 }
 
@@ -55,6 +58,22 @@ const isIncomeSource = (s: any): s is IncomeSource =>
   (s.frequency === 'monthly' || s.frequency === 'weekly') &&
   typeof s.day === 'number';
 
+const isCustomCategory = (c: any): c is CustomCategory =>
+  c != null &&
+  typeof c.name === 'string' &&
+  typeof c.icon === 'string' &&
+  typeof c.color === 'string' &&
+  (c.kind === 'expense' || c.kind === 'income');
+
+const isGoal = (g: any): g is Goal =>
+  g != null &&
+  typeof g.id === 'string' &&
+  typeof g.name === 'string' &&
+  typeof g.icon === 'string' &&
+  typeof g.target === 'number' &&
+  typeof g.saved === 'number' &&
+  (g.deadline === null || typeof g.deadline === 'string');
+
 // Lets the user pick a backup file. Returns null if they cancel; throws if the
 // file is not a valid SpendTrack backup.
 export async function pickBackup(): Promise<BackupData | null> {
@@ -72,7 +91,7 @@ export async function pickBackup(): Promise<BackupData | null> {
   const expenses = parsed.expenses.filter(isExpense);
   const monthlyBudget = typeof parsed.monthlyBudget === 'number' && parsed.monthlyBudget > 0 ? parsed.monthlyBudget : null;
   // Older backups lack the newer fields: v1 has no budgets per category or recurring
-  // rules, v2 has no income sources or past savings.
+  // rules, v2 has no income sources or past savings, v3 has no custom categories or goals.
   const categoryBudgets: Record<string, number> = {};
   if (parsed.categoryBudgets && typeof parsed.categoryBudgets === 'object') {
     for (const [name, v] of Object.entries(parsed.categoryBudgets)) {
@@ -82,5 +101,7 @@ export async function pickBackup(): Promise<BackupData | null> {
   const recurring = Array.isArray(parsed.recurring) ? parsed.recurring.filter(isRecurring) : [];
   const incomeSources = Array.isArray(parsed.incomeSources) ? parsed.incomeSources.filter(isIncomeSource) : [];
   const pastSavings = typeof parsed.pastSavings === 'number' && parsed.pastSavings > 0 ? parsed.pastSavings : null;
-  return { expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings };
+  const customCategories = Array.isArray(parsed.customCategories) ? parsed.customCategories.filter(isCustomCategory) : [];
+  const goals = Array.isArray(parsed.goals) ? parsed.goals.filter(isGoal) : [];
+  return { expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings, customCategories, goals };
 }

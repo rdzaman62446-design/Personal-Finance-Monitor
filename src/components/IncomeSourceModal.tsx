@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { INCOME_CATEGORIES, parseAmount } from '../expenses';
+import { categoriesFor, parseAmount } from '../expenses';
 import { IncomeSource, WEEKDAYS } from '../incomeSources';
 import { Theme } from '../theme';
 import CategoryDropdown from './CategoryDropdown';
@@ -44,7 +44,7 @@ export default function IncomeSourceModal(props: Props) {
 function SourceSheet({ theme: t, source, onSave, onDelete }: Props) {
   const [name, setName] = useState(source?.name ?? '');
   const [amount, setAmount] = useState(source ? source.amount.toString() : '');
-  const [category, setCategory] = useState(source?.category ?? INCOME_CATEGORIES[0].name);
+  const [category, setCategory] = useState(source?.category ?? categoriesFor('income')[0].name);
   const [frequency, setFrequency] = useState<IncomeSource['frequency']>(source?.frequency ?? 'monthly');
   const [monthDay, setMonthDay] = useState(source?.frequency === 'monthly' ? source.day.toString() : '15');
   const [weekday, setWeekday] = useState(source?.frequency === 'weekly' ? source.day : 5);
@@ -117,7 +117,7 @@ function SourceSheet({ theme: t, source, onSave, onDelete }: Props) {
           />
 
           <Text style={[styles.label, { color: t.textMuted }]}>Category</Text>
-          <CategoryDropdown theme={t} value={category} onChange={setCategory} options={INCOME_CATEGORIES} />
+          <CategoryDropdown theme={t} value={category} onChange={setCategory} options={categoriesFor('income')} />
 
           <Text style={[styles.label, { color: t.textMuted }]}>How often?</Text>
           <View style={[styles.segments, { borderColor: t.border, backgroundColor: t.input }]}>

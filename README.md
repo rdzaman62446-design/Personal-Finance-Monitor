@@ -12,11 +12,13 @@ All data stays on your phone. Back it up from the menu.
 - **Saved incomes**: set up each job once (monthly on a day, or weekly on a weekday). On payday, pick it from the Income form. Sources due today and ones already logged are marked.
 
 **Table Log**
-- Search by item, date or day. Filter by expenses, income or category.
+- Search by text, or by amount: `>500`, `under 200`, `100-300`, `=150`. Filter by expenses, income or category.
 - Tap a row to edit it, or long-press to delete it (with Undo).
 
 **Stats**
 - Total savings: savings before SpendTrack + all income − all spending.
+- Savings goals with progress bars, add/withdraw money, and an optional deadline showing how much is needed per month.
+- A month-end summary card you can share as text.
 - Month by month: spent, income, saved, daily average, and change vs last month.
 - Daily spending chart and a breakdown by category.
 - Monthly budget and per-category budgets, with warnings when you go over.
@@ -24,6 +26,7 @@ All data stays on your phone. Back it up from the menu.
 
 **Menu (☰)**
 - Dark mode and the font used for log entries.
+- Custom expense and income categories, each with its own emoji and color.
 - Export to CSV, import from a Google Sheets link or an `.xlsx`/`.csv` file, back up, restore, and clear all data.
 - Shortcuts to budgets, income sources and past savings.
 
@@ -66,4 +69,4 @@ npm run lint
 
 Code layout: `src/App.tsx` (state, pager, menu), `src/screens/` (Add, Table Log, Stats),
 `src/components/` (sheets, pickers, charts, animation helpers), and plain logic modules in `src/`
-(`expenses`, `recurring`, `incomeSources`, `importer`, `backup`, `tidy`, `fonts`).
+(`expenses`, `recurring`, `incomeSources`, `goals`, `summary`, `amountQuery`, `importer`, `backup`, `tidy`, `fonts`).

@@ -2,9 +2,10 @@ import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 
+import { bareAmount, parseAmountQuery } from '../amountQuery';
 import InnerHorizontalScroll from '../components/InnerHorizontalScroll';
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
-import { CATEGORIES, Expense, formatDate, formatDay, formatTime, isIncome, peso, totalIncome, totalSpent } from '../expenses';
+import { categoriesFor, Expense, formatDate, formatDay, formatTime, isIncome, peso, totalIncome, totalSpent } from '../expenses';
 import { logText, useLogFont } from '../fonts';
 import { Theme } from '../theme';
 
@@ -20,13 +21,20 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
 
+  // "over 500", "100-300", "<200"… filter by amount; anything else searches the text.
+  const amountQuery = useMemo(() => parseAmountQuery(query), [query]);
+
   const filtered = useMemo(() => {
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
+    const exact = bareAmount(query);
     return expenses.filter((e) => {
-      const matchesSearch =
-        e.item.toLowerCase().includes(q) ||
-        formatDate(e.timestamp).toLowerCase().includes(q) ||
-        formatDay(e.timestamp).toLowerCase().includes(q);
+      const matchesSearch = amountQuery
+        ? amountQuery.test(e.amount)
+        : e.item.toLowerCase().includes(q) ||
+          formatDate(e.timestamp).toLowerCase().includes(q) ||
+          formatDay(e.timestamp).toLowerCase().includes(q) ||
+          e.category.toLowerCase().includes(q) ||
+          (exact != null && Math.abs(e.amount - exact) < 0.005);
       const matchesFilter =
         filter === 'All' ||
         (filter === 'Expenses' && !isIncome(e)) ||
@@ -34,7 +42,7 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
         e.category === filter;
       return matchesSearch && matchesFilter;
     });
-  }, [expenses, query, filter]);
+  }, [expenses, query, filter, amountQuery]);
 
   const filteredSpent = totalSpent(filtered);
   const filteredIncome = totalIncome(filtered);
@@ -60,7 +68,7 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search item, date, or day..."
+            placeholder="Search text, or amount like >500 or 100-300"
             placeholderTextColor={t.textFaint}
             style={{ flex: 1, color: t.text, fontSize: 13, paddingVertical: 10 }}
           />
@@ -72,12 +80,21 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
         </View>
       </FadeInView>
 
+      {amountQuery && (
+        <FadeInView from={-6}>
+          <View style={[styles.amountChip, { backgroundColor: t.accentSoft }]}>
+            <Feather name="filter" size={12} color={t.accent} />
+            <Text style={{ color: t.accent, fontSize: 12, fontWeight: '700' }}>Amount {amountQuery.label}</Text>
+          </View>
+        </FadeInView>
+      )}
+
       <FadeInView delay={60}>
         <InnerHorizontalScroll contentContainerStyle={{ gap: 6 }}>
           {pill('All', 'All')}
           {pill('💸 Expenses', 'Expenses')}
           {pill('💰 Income', 'Income')}
-          {CATEGORIES.map((c) => pill(`${c.icon} ${c.name}`, c.name))}
+          {categoriesFor('expense').map((c) => pill(`${c.icon} ${c.name}`, c.name))}
         </InnerHorizontalScroll>
       </FadeInView>
 
@@ -157,6 +174,15 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
 
 const styles = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12 },
+  amountChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
   pill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   table: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
   rowItem: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth },

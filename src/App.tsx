@@ -14,35 +14,43 @@ import {
   StyleSheet,
   Text,
   useWindowDimensions,
+  Vibration,
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { pickBackup, shareBackup } from './backup';
 import BudgetModal from './components/BudgetModal';
+import CategoriesModal from './components/CategoriesModal';
 import EditModal from './components/EditModal';
+import GoalModal from './components/GoalModal';
 import ImportModal from './components/ImportModal';
 import { PagerLockContext } from './components/InnerHorizontalScroll';
 import IncomeSourceModal from './components/IncomeSourceModal';
 import FontPickerModal from './components/FontPickerModal';
 import SideMenu from './components/SideMenu';
+import SummaryModal from './components/SummaryModal';
 import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
 import {
   categoryIcon,
+  CustomCategory,
   Expense,
   formatDate,
   isIncome,
   isInMonth,
   isSameDay,
   monthKey,
+  Month,
   monthOf,
   peso,
+  setCustomCategories,
   toCSV,
   totalIncome,
   totalSpent,
 } from './expenses';
 import { fontByKey, LOG_FONTS, LogFontContext, useLoadLogFonts } from './fonts';
+import { Goal } from './goals';
 import { ImportResult } from './importer';
 import { IncomeSource } from './incomeSources';
 import { collectDue, entryFor, Recurring } from './recurring';
@@ -81,6 +89,10 @@ function Main() {
   const [incomeSources, setIncomeSources] = usePersistentState<IncomeSource[]>('spendtrack.incomeSources', []);
   const [pastSavings, setPastSavings] = usePersistentState<number | null>('spendtrack.pastSavings', null);
   const [logFontKey, setLogFontKey] = usePersistentState('spendtrack.logFont', 'system');
+  const [customCategories, setCustomCats] = usePersistentState<CustomCategory[]>('spendtrack.customCategories', []);
+  const [goals, setGoals] = usePersistentState<Goal[]>('spendtrack.goals', []);
+  // Make custom categories visible to every category lookup before the screens render.
+  setCustomCategories(customCategories);
   const [fontsReady] = useLoadLogFonts();
   const logFont = fontsReady ? fontByKey(logFontKey) : LOG_FONTS[0];
   const [tab, setTab] = useState<Tab>('add');
@@ -91,6 +103,10 @@ function Main() {
   const [importOpen, setImportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  // The goal being edited: { goal: null } creates a new one.
+  const [goalTarget, setGoalTarget] = useState<{ goal: Goal | null } | null>(null);
+  const [summaryMonth, setSummaryMonth] = useState<Month | null>(null);
   // Paused while a finger is on a horizontal list inside a page (see InnerHorizontalScroll).
   const [pagerLocked, setPagerLocked] = useState(false);
   const [pastSavingsOpen, setPastSavingsOpen] = useState(false);
@@ -272,6 +288,63 @@ function Main() {
       ],
     );
 
+  const addCategory = (c: CustomCategory) => {
+    setCustomCats((prev) => [...prev, c]);
+    showToast(`${c.icon} ${c.name} added`);
+  };
+
+  // Removing a custom category moves anything using it to the matching "Other" category.
+  const deleteCategory = (c: CustomCategory) => {
+    const fallback = c.kind === 'income' ? 'Other Income' : 'Other';
+    const used = expenses.filter((e) => e.category === c.name).length;
+    const remove = () => {
+      setCustomCats((prev) => prev.filter((x) => x.name !== c.name));
+      const move = <T extends { category: string }>(list: T[]) =>
+        list.map((x) => (x.category === c.name ? { ...x, category: fallback } : x));
+      setExpenses((prev) => move(prev));
+      setRecurring((prev) => move(prev));
+      setIncomeSources((prev) => move(prev));
+      setCategoryBudgets((prev) => {
+        const next = { ...prev };
+        delete next[c.name];
+        return next;
+      });
+      showToast(`${c.name} removed`);
+    };
+    if (used === 0) remove();
+    else
+      Alert.alert(`Remove ${c.name}?`, `${used} entries use it. They'll be moved to “${fallback}”.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: remove },
+      ]);
+  };
+
+  const saveGoal = (g: Goal) => {
+    const exists = goals.some((x) => x.id === g.id);
+    setGoals((prev) => (exists ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]));
+    setGoalTarget(null);
+    showToast(exists ? `"${g.name}" updated` : `🎯 Goal "${g.name}" created`);
+  };
+
+  const moveGoalMoney = (g: Goal, delta: number) => {
+    const saved = Math.max(0, Math.round((g.saved + delta) * 100) / 100);
+    const updated = { ...g, saved };
+    setGoals((prev) => prev.map((x) => (x.id === g.id ? updated : x)));
+    setGoalTarget({ goal: updated });
+    if (delta > 0 && g.saved < g.target && saved >= g.target) {
+      Vibration.vibrate([0, 60, 80, 60]);
+      showToast(`🎉 You reached your "${g.name}" goal!`);
+    } else {
+      showToast(delta > 0 ? `+${peso(delta)} to ${g.name}` : `${peso(-delta)} withdrawn from ${g.name}`);
+    }
+  };
+
+  const deleteGoal = (g: Goal) => {
+    setGoals((prev) => prev.filter((x) => x.id !== g.id));
+    setGoalTarget(null);
+    showToast(`"${g.name}" deleted`, 'UNDO', () => setGoals((prev) => [...prev, g]));
+  };
+
   const savePastSavings = (amount: number | null) => {
     setPastSavings(amount);
     setPastSavingsOpen(false);
@@ -312,7 +385,7 @@ function Main() {
 
   const backup = async () => {
     try {
-      await shareBackup({ expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings });
+      await shareBackup({ expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings, customCategories, goals });
     } catch (err) {
       Alert.alert('Backup failed', String(err));
     }
@@ -329,6 +402,12 @@ function Main() {
         if (data.monthlyBudget != null) setMonthlyBudget(data.monthlyBudget);
         if (Object.keys(data.categoryBudgets).length) setCategoryBudgets((prev) => ({ ...prev, ...data.categoryBudgets }));
         if (data.pastSavings != null) setPastSavings(data.pastSavings);
+        const mergeBy = <T,>(key: (x: T) => string) => (prev: T[], incoming: T[]) => {
+          const seen = new Set(prev.map(key));
+          return [...prev, ...incoming.filter((x) => !seen.has(key(x)))];
+        };
+        if (data.customCategories.length) setCustomCats((prev) => mergeBy<CustomCategory>((c) => c.name)(prev, data.customCategories));
+        if (data.goals.length) setGoals((prev) => mergeBy<Goal>((g) => g.id)(prev, data.goals));
         if (data.incomeSources.length) {
           setIncomeSources((prev) => {
             const ids = new Set(prev.map((x) => x.id));
@@ -456,6 +535,9 @@ function Main() {
                   recurring={recurring}
                   incomeSources={incomeSources}
                   pastSavings={pastSavings}
+                  goals={goals}
+                  onEditGoal={(goal) => setGoalTarget({ goal })}
+                  onOpenSummary={setSummaryMonth}
                   onEditPastSavings={() => setPastSavingsOpen(true)}
                   onEditIncomeSource={(source) => setSourceTarget({ source })}
                   onSetBudget={() => setBudgetTarget({ category: null })}
@@ -494,6 +576,9 @@ function Main() {
               { icon: 'target', label: 'Monthly budget', onPress: () => setBudgetTarget({ category: null }) },
               { icon: 'briefcase', label: 'Add income source', onPress: () => setSourceTarget({ source: null }) },
               { icon: 'trending-up', label: 'Past savings', onPress: () => setPastSavingsOpen(true) },
+              { icon: 'flag', label: 'New savings goal', onPress: () => setGoalTarget({ goal: null }) },
+              { icon: 'award', label: 'This month’s summary', onPress: () => setSummaryMonth(monthOf(Date.now())) },
+              { icon: 'tag', label: 'Categories', onPress: () => setCategoriesOpen(true) },
             ],
           },
           {
@@ -512,6 +597,30 @@ function Main() {
             ],
           },
         ]}
+      />
+      <CategoriesModal
+        theme={t}
+        visible={categoriesOpen}
+        custom={customCategories}
+        onClose={() => setCategoriesOpen(false)}
+        onAdd={addCategory}
+        onDelete={deleteCategory}
+      />
+      <GoalModal
+        theme={t}
+        visible={goalTarget != null}
+        goal={goalTarget?.goal ?? null}
+        onClose={() => setGoalTarget(null)}
+        onSave={saveGoal}
+        onMoveMoney={moveGoalMoney}
+        onDelete={deleteGoal}
+      />
+      <SummaryModal
+        theme={t}
+        visible={summaryMonth != null}
+        month={summaryMonth ?? monthOf(now)}
+        expenses={expenses}
+        onClose={() => setSummaryMonth(null)}
       />
       <FontPickerModal
         theme={t}

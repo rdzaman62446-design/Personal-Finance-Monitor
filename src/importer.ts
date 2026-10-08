@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 
-import { CATEGORIES, Expense, INCOME_CATEGORIES } from './expenses';
+import { categoriesFor, Expense } from './expenses';
 
 // Reads expenses from a spreadsheet: an .xlsx file, a .csv file, or a Google
 // Sheets share link. The header row is found automatically by its column names.
@@ -171,7 +171,7 @@ export const guessCategory = (item: string) => {
 
 const matchCategory = (raw: string, item: string, income: boolean) => {
   const s = raw.trim().toLowerCase();
-  const list = income ? INCOME_CATEGORIES : CATEGORIES;
+  const list = categoriesFor(income ? 'income' : 'expense');
   if (s) {
     const hit = list.find((c) => c.name.toLowerCase() === s || c.name.toLowerCase().split(/[ /&]+/).includes(s));
     if (hit) return hit.name;

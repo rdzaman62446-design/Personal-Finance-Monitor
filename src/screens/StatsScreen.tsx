@@ -5,7 +5,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import DailyChart from '../components/DailyChart';
 import { AnimatedBar, AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import {
-  CATEGORIES,
+  categoriesFor,
   categoryColor,
   categoryIcon,
   daysInMonth,
@@ -15,12 +15,14 @@ import {
   Month,
   monthLabel,
   monthOf,
+  parseMonthKey,
   peso,
   sameMonth,
   shiftMonth,
   totalIncome,
   totalSpent,
 } from '../expenses';
+import { Goal, perMonthNeeded } from '../goals';
 import { IncomeSource, isDueOn, scheduleLabel } from '../incomeSources';
 import { ordinal, Recurring } from '../recurring';
 import { budgetColor, Theme } from '../theme';
@@ -33,6 +35,9 @@ type Props = {
   recurring: Recurring[];
   incomeSources: IncomeSource[];
   pastSavings: number | null;
+  goals: Goal[];
+  onEditGoal: (goal: Goal | null) => void;
+  onOpenSummary: (month: Month) => void;
   onEditPastSavings: () => void;
   onEditIncomeSource: (source: IncomeSource | null) => void;
   onSetBudget: () => void;
@@ -48,6 +53,9 @@ export default function StatsScreen({
   recurring,
   incomeSources,
   pastSavings,
+  goals,
+  onEditGoal,
+  onOpenSummary,
   onEditPastSavings,
   onEditIncomeSource,
   onSetBudget,
@@ -78,7 +86,7 @@ export default function StatsScreen({
     for (const e of monthEntries) if (!isIncome(e)) map[e.category] = (map[e.category] ?? 0) + e.amount;
     // This month lists every category so budgets can be set before spending; past months only those used.
     const names = isCurrent
-      ? Array.from(new Set([...CATEGORIES.map((c) => c.name), ...Object.keys(map)]))
+      ? Array.from(new Set([...categoriesFor('expense').map((c) => c.name), ...Object.keys(map)]))
       : Object.keys(map);
     return names
       .map((name) => ({ name, total: map[name] ?? 0, share: spent > 0 ? ((map[name] ?? 0) / spent) * 100 : 0 }))
@@ -161,6 +169,50 @@ export default function StatsScreen({
         </View>
       </FadeInView>
 
+      <FadeInView delay={60}>
+        <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={styles.row}>
+              <Feather name="flag" size={16} color={t.accent} />
+              <Text style={[styles.cardTitle, { color: t.text }]}>Savings Goals</Text>
+            </View>
+            <Pressable hitSlop={10} onPress={() => onEditGoal(null)} style={styles.row}>
+              <Feather name="plus" size={14} color={t.accent} />
+              <Text style={{ color: t.accent, fontSize: 12, fontWeight: '700' }}>New goal</Text>
+            </Pressable>
+          </View>
+          {goals.length === 0 ? (
+            <Text style={{ color: t.textMuted, fontSize: 12 }}>
+              Saving up for something? Create a goal like “New phone ₱25,000” and add money to it as you save.
+            </Text>
+          ) : (
+            goals.map((g, i) => {
+              const pct = Math.min(100, (g.saved / g.target) * 100);
+              const done = g.saved >= g.target;
+              const perMonth = perMonthNeeded(g, nowTs);
+              return (
+                <Pressable key={g.id} onPress={() => onEditGoal(g)} style={({ pressed }) => [{ gap: 6, opacity: pressed ? 0.6 : 1 }]}>
+                  <View style={styles.cardHeader}>
+                    <Text numberOfLines={1} style={{ flex: 1, color: t.text, fontSize: 13, fontWeight: '600' }}>
+                      {g.icon} {g.name}
+                    </Text>
+                    <Text style={{ color: done ? t.accent : t.textMuted, fontSize: 12, fontWeight: done ? '800' : '400' }}>
+                      {done ? '🎉 Reached!' : `${peso(g.saved)} / ${peso(g.target)}`}
+                    </Text>
+                  </View>
+                  <AnimatedBar percent={pct} color={done ? t.amber : t.accent} trackColor={t.border} height={10} delay={120 + i * 80} />
+                  <Text style={{ color: t.textFaint, fontSize: 11 }}>
+                    {done
+                      ? `${peso(g.saved)} saved`
+                      : `${pct.toFixed(0)}% · ${peso(g.target - g.saved)} to go${perMonth != null ? ` · ${peso(perMonth)}/month to finish by ${monthLabel(parseMonthKey(g.deadline!))}` : ''}`}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+        </View>
+      </FadeInView>
+
       <View style={[styles.monthBar, { backgroundColor: t.card, borderColor: t.border }]}>
         <PressableScale hitSlop={10} onPress={() => setMonth(shiftMonth(month, -1))} style={styles.arrow}>
           <Feather name="chevron-left" size={20} color={t.text} />
@@ -178,6 +230,14 @@ export default function StatsScreen({
           <Feather name="chevron-right" size={20} color={t.text} />
         </PressableScale>
       </View>
+
+      <PressableScale onPress={() => onOpenSummary(month)} style={[styles.summaryBtn, { borderColor: t.accent, backgroundColor: t.accentSoft }]}>
+        <Feather name="award" size={16} color={t.accent} />
+        <Text style={{ color: t.accent, fontWeight: '700', fontSize: 13 }}>
+          {isCurrent ? 'This month’s summary' : `${monthLabel(month)} summary`}
+        </Text>
+        <Feather name="share-2" size={14} color={t.accent} />
+      </PressableScale>
 
       {/* Re-keyed per month so the whole section animates in when switching months. */}
       <View key={monthId} style={{ gap: 16 }}>
@@ -381,6 +441,15 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: '600', fontSize: 14 },
   stacked: { flexDirection: 'row', height: 14, borderRadius: 999, overflow: 'hidden', gap: 2 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  summaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 11,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
   savingsLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dashed: {
     flexDirection: 'row',
