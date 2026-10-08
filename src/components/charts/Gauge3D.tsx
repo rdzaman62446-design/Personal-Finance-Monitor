@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 import { Theme } from '../../theme';
-import { shade } from './ColumnChart3D';
+import { shade } from '../../color';
 
 // Half-disc wedge (see Pie3D) spanning `sweep` degrees clockwise from `start`.
 function Wedge({ size, start, sweep, color }: { size: number; start: number; sweep: number; color: string }) {

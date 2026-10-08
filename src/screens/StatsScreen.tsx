@@ -2,9 +2,8 @@ import { Feather } from '@expo/vector-icons';
 import { ReactNode, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ColumnChart3D } from '../components/charts/ColumnChart3D';
+import Bars3D from '../components/charts/Bars3D';
 import Gauge3D from '../components/charts/Gauge3D';
-import HBarChart3D from '../components/charts/HBarChart3D';
 import LineChart3D from '../components/charts/LineChart3D';
 import Pie3D from '../components/charts/Pie3D';
 import EntryList from '../components/EntryList';
@@ -441,23 +440,21 @@ function MonthCharts({
       {card(
         <>
           {title('layers', 'Overview', 'tap a column')}
-          <ColumnChart3D
+          <Bars3D
             theme={t}
-            items={[
-              { key: 'spent', value: spent, color: t.accent, top: shortPeso(spent), caption: 'Spent' },
-              { key: 'income', value: income, color: t.income, top: shortPeso(income), caption: 'Income' },
+            bars={[
+              { key: 'spent', value: spent, color: t.accent, topLabel: shortPeso(spent), label: 'Spent' },
+              { key: 'income', value: income, color: t.income, topLabel: shortPeso(income), label: 'Income' },
               {
                 key: 'saved',
                 value: Math.abs(saved),
                 color: saved >= 0 ? t.amber : t.danger,
-                top: `${saved < 0 ? '−' : ''}${shortPeso(Math.abs(saved))}`,
-                caption: saved >= 0 ? 'Saved' : 'Short',
+                topLabel: `${saved < 0 ? '−' : ''}${shortPeso(Math.abs(saved))}`,
+                label: saved >= 0 ? 'Saved' : 'Short',
               },
             ]}
-            height={120}
-            barWidth={46}
-            depth={14}
-            gap={34}
+            height={140}
+            barWidth={44}
             selectedKey={overviewSel}
             onSelect={setOverviewSel}
           />
@@ -596,17 +593,19 @@ function MonthCharts({
       {card(
         <>
           {title('trending-up', '6-Month Trend', 'tap to open month')}
-          <HBarChart3D
+          <Bars3D
             theme={t}
-            rows={trend.map(({ m, spent: v }) => ({
+            bars={trend.map(({ m, spent: v }) => ({
               key: `${m.year}-${m.month}`,
               label: MONTH_SHORT[m.month],
               value: v,
               color: t.accent,
-              valueLabel: shortPeso(v),
+              topLabel: shortPeso(v),
             }))}
+            height={130}
             selectedKey={`${month.year}-${month.month}`}
             onSelect={(key) => {
+              if (!key) return;
               const [y, mo] = key.split('-').map(Number);
               onPickMonth({ year: y, month: mo });
             }}

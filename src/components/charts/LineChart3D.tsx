@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Theme } from '../../theme';
-import { shade } from './ColumnChart3D';
+import { shade } from '../../color';
 
 export type LinePoint = { key: string; value: number; label: string };
 

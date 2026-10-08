@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Theme } from '../../theme';
-import { shade } from './ColumnChart3D';
+import { shade } from '../../color';
 
 export type PieSlice = { key: string; value: number; color: string; label: string };
 

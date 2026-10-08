@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { ReactNode, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ColumnChart3D } from '../components/charts/ColumnChart3D';
+import Bars3D from '../components/charts/Bars3D';
 import InnerHorizontalScroll from '../components/InnerHorizontalScroll';
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import { Month, monthLabel, monthOf, peso } from '../expenses';
@@ -164,19 +164,16 @@ export default function ForecastScreen({ theme: t, plan, totalSavings, importabl
               </View>
               <Text style={{ color: t.textFaint, fontSize: 11 }}>tap a month</Text>
             </View>
-            <ColumnChart3D
+            <Bars3D
               theme={t}
-              items={rows.map((r) => ({
+              bars={rows.map((r) => ({
                 key: r.key,
                 value: Math.max(0, r.balance),
-                color: r.balance >= 0 ? (r.key === selected?.key ? t.accent : t.income) : t.danger,
-                top: shortPeso(r.balance),
-                caption: MONTH_SHORT[r.month.month],
+                color: r.balance >= 0 ? t.income : t.danger,
+                topLabel: shortPeso(r.balance),
+                label: MONTH_SHORT[r.month.month],
               }))}
-              height={130}
-              barWidth={plan.months > 6 ? 18 : 30}
-              depth={plan.months > 6 ? 7 : 11}
-              gap={plan.months > 6 ? 12 : 18}
+              height={140}
               selectedKey={selected?.key ?? null}
               onSelect={(k) => setSelectedKey(k)}
             />
