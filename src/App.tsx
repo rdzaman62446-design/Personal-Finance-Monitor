@@ -24,7 +24,20 @@ import BudgetModal from './components/BudgetModal';
 import EditModal from './components/EditModal';
 import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
-import { Expense, isInMonth, isSameDay, monthOf, toCSV } from './expenses';
+import {
+  categoryIcon,
+  Expense,
+  isIncome,
+  isInMonth,
+  isSameDay,
+  monthKey,
+  monthOf,
+  peso,
+  toCSV,
+  totalIncome,
+  totalSpent,
+} from './expenses';
+import { collectDue, entryFor, Recurring } from './recurring';
 import AddScreen from './screens/AddScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import StatsScreen from './screens/StatsScreen';
@@ -51,12 +64,15 @@ export default function App() {
 function Main() {
   useUpdateCheck();
 
-  const [expenses, setExpenses] = usePersistentState<Expense[]>('spendtrack.expenses', []);
+  const [expenses, setExpenses, expensesLoaded] = usePersistentState<Expense[]>('spendtrack.expenses', []);
   const [darkMode, setDarkMode] = usePersistentState('spendtrack.darkMode', true);
   const [monthlyBudget, setMonthlyBudget] = usePersistentState<number | null>('spendtrack.monthlyBudget', null);
+  const [categoryBudgets, setCategoryBudgets] = usePersistentState<Record<string, number>>('spendtrack.categoryBudgets', {});
+  const [recurring, setRecurring, recurringLoaded] = usePersistentState<Recurring[]>('spendtrack.recurring', []);
   const [tab, setTab] = useState<Tab>('add');
   const [editing, setEditing] = useState<Expense | null>(null);
-  const [budgetOpen, setBudgetOpen] = useState(false);
+  // Which budget the budget sheet is editing: the overall monthly one (category null) or a category's.
+  const [budgetTarget, setBudgetTarget] = useState<{ category: string | null } | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const pagerRef = useRef<ScrollView>(null);
   const { width: pageWidth } = useWindowDimensions();
@@ -65,22 +81,35 @@ function Main() {
   const pagePosition = useMemo(() => Animated.divide(scrollX, pageWidth || 1), [scrollX, pageWidth]);
   const t = darkMode ? darkTheme : lightTheme;
 
-  // "Now" for the Today / This Month totals; refreshed when the app comes back
-  // to the foreground or an expense is added, so it rolls over at midnight.
+  // "Now" for the Today / This Month totals and recurring entries; refreshed when
+  // the app comes back to the foreground or an entry is added, so it rolls over at midnight.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => state === 'active' && setNow(Date.now()));
     return () => sub.remove();
   }, []);
 
-  const spentToday = useMemo(
-    () => expenses.filter((e) => isSameDay(e.timestamp, now)).reduce((s, e) => s + e.amount, 0),
-    [expenses, now],
-  );
-  const spentThisMonth = useMemo(() => {
+  // Log any monthly expenses that have come due since the app was last opened.
+  useEffect(() => {
+    if (!expensesLoaded || !recurringLoaded) return;
+    const due = collectDue(recurring, now);
+    if (due.rules === recurring) return;
+    setRecurring(due.rules);
+    setExpenses((prev) => {
+      const ids = new Set(prev.map((e) => e.id));
+      const fresh = due.entries.filter((e) => !ids.has(e.id));
+      return fresh.length ? [...prev, ...fresh].sort((a, b) => b.timestamp - a.timestamp) : prev;
+    });
+  }, [expensesLoaded, recurringLoaded, recurring, now, setRecurring, setExpenses]);
+
+  const todayEntries = useMemo(() => expenses.filter((e) => isSameDay(e.timestamp, now)), [expenses, now]);
+  const monthEntries = useMemo(() => {
     const m = monthOf(now);
-    return expenses.filter((e) => isInMonth(e.timestamp, m)).reduce((s, e) => s + e.amount, 0);
+    return expenses.filter((e) => isInMonth(e.timestamp, m));
   }, [expenses, now]);
+  const spentToday = totalSpent(todayEntries);
+  const spentThisMonth = totalSpent(monthEntries);
+  const incomeThisMonth = totalIncome(monthEntries);
 
   const showToast = (message: string, actionLabel?: string, onAction?: () => void) =>
     setToast({ id: Date.now(), message, actionLabel, onAction });
@@ -91,14 +120,44 @@ function Main() {
     pagerRef.current?.scrollTo({ x: TABS.findIndex((x) => x.key === next) * pageWidth, animated: true });
   };
 
-  const addExpense = (e: Omit<Expense, 'id' | 'timestamp'>) => {
+  // Warns when this expense pushes its category (or the whole month) over budget.
+  const budgetWarning = (e: Omit<Expense, 'id' | 'timestamp'>) => {
+    const catBudget = categoryBudgets[e.category];
+    const catSpent = totalSpent(monthEntries.filter((x) => x.category === e.category));
+    if (catBudget && catSpent < catBudget && catSpent + e.amount >= catBudget) {
+      return `⚠️ ${e.category} is now over its ${peso(catBudget)} budget`;
+    }
+    if (monthlyBudget && spentThisMonth < monthlyBudget && spentThisMonth + e.amount >= monthlyBudget) {
+      return `⚠️ You've reached your ${peso(monthlyBudget)} monthly budget`;
+    }
+    return null;
+  };
+
+  const addEntry = (e: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean) => {
     const ts = Date.now();
     setNow(ts);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpenses((prev) => [{ ...e, id: ts.toString(), timestamp: ts }, ...prev]);
+    if (repeatMonthly) {
+      // This month's entry is logged now; the rule picks up from next month.
+      const rule: Recurring = {
+        id: ts.toString(36),
+        item: e.item,
+        amount: e.amount,
+        category: e.category,
+        day: new Date(ts).getDate(),
+        lastPosted: monthKey(monthOf(ts)),
+      };
+      setRecurring((prev) => [...prev, rule]);
+      setExpenses((prev) => [{ ...entryFor(rule, monthOf(ts)), timestamp: ts }, ...prev]);
+    } else {
+      setExpenses((prev) => [{ ...e, id: ts.toString(), timestamp: ts }, ...prev]);
+    }
+    const warning = isIncome(e as Expense) ? null : budgetWarning(e);
+    if (warning) showToast(warning);
+    else if (repeatMonthly) showToast(`"${e.item}" will be logged every month`);
   };
 
-  const deleteExpense = (target: Expense) => {
+  const deleteEntry = (target: Expense) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpenses((prev) => prev.filter((e) => e.id !== target.id));
     showToast(`Deleted "${target.item}"`, 'UNDO', () => {
@@ -113,10 +172,27 @@ function Main() {
     showToast('Changes saved');
   };
 
+  const deleteRecurring = (rule: Recurring) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setRecurring((prev) => prev.filter((r) => r.id !== rule.id));
+    showToast(`"${rule.item}" stopped`, 'UNDO', () => setRecurring((prev) => [...prev, rule]));
+  };
+
   const saveBudget = (budget: number | null) => {
-    setMonthlyBudget(budget);
-    setBudgetOpen(false);
-    showToast(budget ? 'Monthly budget saved' : 'Monthly budget removed');
+    const category = budgetTarget?.category ?? null;
+    if (category) {
+      setCategoryBudgets((prev) => {
+        const next = { ...prev };
+        if (budget) next[category] = budget;
+        else delete next[category];
+        return next;
+      });
+      showToast(budget ? `${category} budget saved` : `${category} budget removed`);
+    } else {
+      setMonthlyBudget(budget);
+      showToast(budget ? 'Monthly budget saved' : 'Monthly budget removed');
+    }
+    setBudgetTarget(null);
   };
 
   const exportCSV = async () => {
@@ -136,7 +212,7 @@ function Main() {
 
   const backup = async () => {
     try {
-      await shareBackup({ expenses, monthlyBudget });
+      await shareBackup({ expenses, monthlyBudget, categoryBudgets, recurring });
     } catch (err) {
       Alert.alert('Backup failed', String(err));
     }
@@ -146,25 +222,31 @@ function Main() {
     try {
       const data = await pickBackup();
       if (!data) return;
-      const apply = (next: Expense[]) => {
+      const apply = (nextExpenses: Expense[], nextRecurring: Recurring[]) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setExpenses(next.sort((a, b) => b.timestamp - a.timestamp));
+        setExpenses(nextExpenses.sort((a, b) => b.timestamp - a.timestamp));
+        setRecurring(nextRecurring);
         if (data.monthlyBudget != null) setMonthlyBudget(data.monthlyBudget);
-        showToast(`Restored ${data.expenses.length} expenses`);
+        if (Object.keys(data.categoryBudgets).length) setCategoryBudgets((prev) => ({ ...prev, ...data.categoryBudgets }));
+        showToast(`Restored ${data.expenses.length} entries`);
       };
       Alert.alert(
         'Restore backup?',
-        `The backup has ${data.expenses.length} expenses. You currently have ${expenses.length}.`,
+        `The backup has ${data.expenses.length} entries. You currently have ${expenses.length}.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Merge',
             onPress: () => {
               const ids = new Set(expenses.map((e) => e.id));
-              apply([...expenses, ...data.expenses.filter((e) => !ids.has(e.id))]);
+              const ruleIds = new Set(recurring.map((r) => r.id));
+              apply(
+                [...expenses, ...data.expenses.filter((e) => !ids.has(e.id))],
+                [...recurring, ...data.recurring.filter((r) => !ruleIds.has(r.id))],
+              );
             },
           },
-          { text: 'Replace', style: 'destructive', onPress: () => apply([...data.expenses]) },
+          { text: 'Replace', style: 'destructive', onPress: () => apply([...data.expenses], data.recurring) },
         ],
       );
     } catch (err) {
@@ -217,27 +299,33 @@ function Main() {
               expenses={expenses}
               spentToday={spentToday}
               spentThisMonth={spentThisMonth}
+              incomeThisMonth={incomeThisMonth}
               monthlyBudget={monthlyBudget}
-              onAdd={addExpense}
+              onAdd={addEntry}
               onViewAll={() => switchTab('history')}
-              onSetBudget={() => setBudgetOpen(true)}
+              onSetBudget={() => setBudgetTarget({ category: null })}
             />
           </Page>
           <Page width={pageWidth}>
-            <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteExpense} />
+            <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteEntry} />
           </Page>
           <Page width={pageWidth}>
             <StatsScreen
               theme={t}
               expenses={expenses}
               monthlyBudget={monthlyBudget}
-              onSetBudget={() => setBudgetOpen(true)}
+              categoryBudgets={categoryBudgets}
+              recurring={recurring}
+              onSetBudget={() => setBudgetTarget({ category: null })}
+              onSetCategoryBudget={(category) => setBudgetTarget({ category })}
+              onDeleteRecurring={deleteRecurring}
               onBackup={backup}
               onRestore={restore}
               onClear={() => {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                 setExpenses([]);
-                showToast('All expenses cleared');
+                setRecurring([]);
+                showToast('All entries cleared');
               }}
             />
           </Page>
@@ -250,9 +338,15 @@ function Main() {
       <EditModal theme={t} expense={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
       <BudgetModal
         theme={t}
-        visible={budgetOpen}
-        current={monthlyBudget}
-        onClose={() => setBudgetOpen(false)}
+        visible={budgetTarget != null}
+        title={budgetTarget?.category ? `${categoryIcon(budgetTarget.category)} ${budgetTarget.category} budget` : 'Monthly budget'}
+        subtitle={
+          budgetTarget?.category
+            ? `The most you want to spend on ${budgetTarget.category} each month.`
+            : 'How much do you want to spend at most each month?'
+        }
+        current={budgetTarget?.category ? (categoryBudgets[budgetTarget.category] ?? null) : monthlyBudget}
+        onClose={() => setBudgetTarget(null)}
         onSave={saveBudget}
       />
     </SafeAreaView>

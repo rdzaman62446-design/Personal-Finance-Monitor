@@ -1,10 +1,22 @@
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Switch, Text, TextInput, Vibration, View } from 'react-native';
 
 import CategoryDropdown from '../components/CategoryDropdown';
 import { AnimatedBar, AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
-import { CATEGORIES, categoryIcon, Expense, formatDate, formatDay, formatTime, parseAmount, peso } from '../expenses';
+import {
+  categoriesFor,
+  categoryIcon,
+  Expense,
+  formatDate,
+  formatDay,
+  formatTime,
+  isIncome,
+  Kind,
+  parseAmount,
+  peso,
+} from '../expenses';
+import { ordinal } from '../recurring';
 import { budgetColor, Theme } from '../theme';
 
 type Props = {
@@ -12,8 +24,9 @@ type Props = {
   expenses: Expense[];
   spentToday: number;
   spentThisMonth: number;
+  incomeThisMonth: number;
   monthlyBudget: number | null;
-  onAdd: (e: Omit<Expense, 'id' | 'timestamp'>) => void;
+  onAdd: (e: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean) => void;
   onViewAll: () => void;
   onSetBudget: () => void;
 };
@@ -23,17 +36,23 @@ export default function AddScreen({
   expenses,
   spentToday,
   spentThisMonth,
+  incomeThisMonth,
   monthlyBudget,
   onAdd,
   onViewAll,
   onSetBudget,
 }: Props) {
+  const [kind, setKind] = useState<Kind>('expense');
   const [item, setItem] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0].name);
+  const [category, setCategory] = useState(categoriesFor('expense')[0].name);
+  const [repeat, setRepeat] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
   const [pop] = useState(() => new Animated.Value(0));
+  const [today] = useState(() => new Date().getDate());
 
+  const income = kind === 'income';
+  const tint = income ? t.income : t.accent;
   const parsed = parseAmount(amount);
   const canSubmit = item.trim().length > 0 && parsed != null;
 
@@ -43,11 +62,19 @@ export default function AddScreen({
     return () => clearTimeout(timer);
   }, [justAdded]);
 
+  const switchKind = (next: Kind) => {
+    if (next === kind) return;
+    setKind(next);
+    setCategory(categoriesFor(next)[0].name);
+    setRepeat(false);
+  };
+
   const submit = () => {
     if (!canSubmit) return;
-    onAdd({ item: item.trim(), amount: parsed, category });
+    onAdd({ item: item.trim(), amount: parsed, category, kind }, repeat && !income);
     setItem('');
     setAmount('');
+    setRepeat(false);
     setJustAdded(true);
     Vibration.vibrate(40);
     pop.setValue(0);
@@ -56,6 +83,7 @@ export default function AddScreen({
 
   const ratio = monthlyBudget ? spentThisMonth / monthlyBudget : 0;
   const remaining = monthlyBudget ? monthlyBudget - spentThisMonth : 0;
+  const saved = incomeThisMonth - spentThisMonth;
   const checkScale = pop.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
 
   return (
@@ -64,7 +92,7 @@ export default function AddScreen({
         <View style={[styles.banner, { backgroundColor: t.card, borderColor: t.border }]}>
           <View style={styles.bannerRow}>
             <View>
-              <Text style={[styles.small, { color: t.textMuted }]}>Today</Text>
+              <Text style={[styles.small, { color: t.textMuted }]}>Spent Today</Text>
               <AnimatedNumber value={spentToday} format={peso} style={[styles.big, { color: t.accent }]} />
             </View>
             <View style={{ alignItems: 'flex-end' }}>
@@ -72,6 +100,18 @@ export default function AddScreen({
               <AnimatedNumber value={spentThisMonth} format={peso} style={[styles.medium, { color: t.text }]} />
             </View>
           </View>
+
+          {incomeThisMonth > 0 && (
+            <View style={[styles.incomeRow, { borderTopColor: t.border }]}>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>
+                Income <Text style={{ color: t.income, fontWeight: '700' }}>{peso(incomeThisMonth)}</Text>
+              </Text>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>
+                {saved >= 0 ? 'Saved ' : 'Short '}
+                <Text style={{ color: saved >= 0 ? t.accent : t.danger, fontWeight: '700' }}>{peso(Math.abs(saved))}</Text>
+              </Text>
+            </View>
+          )}
 
           {monthlyBudget ? (
             <Pressable onPress={onSetBudget} style={{ gap: 6, marginTop: 12 }}>
@@ -93,10 +133,7 @@ export default function AddScreen({
 
       <FadeInView delay={80}>
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
-          <View style={styles.row}>
-            <Feather name="plus" size={16} color={t.accent} />
-            <Text style={[styles.cardTitle, { color: t.text }]}>New Expense Entry</Text>
-          </View>
+          <KindToggle theme={t} kind={kind} onChange={switchKind} />
 
           <Text style={[styles.label, { color: t.textMuted }]}>How much? (₱)</Text>
           <TextInput
@@ -105,14 +142,14 @@ export default function AddScreen({
             placeholder="0.00"
             placeholderTextColor={t.textFaint}
             keyboardType="decimal-pad"
-            style={[styles.amountInput, { backgroundColor: t.input, borderColor: t.border, color: t.text }]}
+            style={[styles.amountInput, { backgroundColor: t.input, borderColor: income ? t.income : t.border, color: t.text }]}
           />
 
-          <Text style={[styles.label, { color: t.textMuted }]}>What did you spend on?</Text>
+          <Text style={[styles.label, { color: t.textMuted }]}>{income ? 'Where is it from?' : 'What did you spend on?'}</Text>
           <TextInput
             value={item}
             onChangeText={setItem}
-            placeholder="e.g. Commute, Dinner, Groceries"
+            placeholder={income ? 'e.g. October salary, Project payment' : 'e.g. Commute, Dinner, Groceries'}
             placeholderTextColor={t.textFaint}
             returnKeyType="done"
             onSubmitEditing={submit}
@@ -120,12 +157,30 @@ export default function AddScreen({
           />
 
           <Text style={[styles.label, { color: t.textMuted }]}>Category</Text>
-          <CategoryDropdown theme={t} value={category} onChange={setCategory} />
+          <CategoryDropdown theme={t} value={category} onChange={setCategory} options={categoriesFor(kind)} />
+
+          {!income && (
+            <Pressable onPress={() => setRepeat(!repeat)} style={[styles.repeatRow, { borderColor: repeat ? t.accent : t.border }]}>
+              <Feather name="repeat" size={16} color={repeat ? t.accent : t.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: t.text, fontSize: 13, fontWeight: '600' }}>Repeat monthly</Text>
+                <Text style={{ color: t.textMuted, fontSize: 11 }}>
+                  {repeat ? `Logged automatically on the ${ordinal(today)} of every month` : 'For rent, bills and subscriptions'}
+                </Text>
+              </View>
+              <Switch
+                value={repeat}
+                onValueChange={setRepeat}
+                trackColor={{ true: t.accent, false: t.border }}
+                thumbColor="#ffffff"
+              />
+            </Pressable>
+          )}
 
           <PressableScale
             onPress={submit}
             disabled={!canSubmit && !justAdded}
-            style={[styles.submit, { backgroundColor: t.accent, opacity: canSubmit || justAdded ? 1 : 0.5 }]}
+            style={[styles.submit, { backgroundColor: tint, opacity: canSubmit || justAdded ? 1 : 0.5 }]}
           >
             {justAdded ? (
               <Animated.View style={[styles.row, { transform: [{ scale: checkScale }] }]}>
@@ -135,7 +190,7 @@ export default function AddScreen({
             ) : (
               <>
                 <Feather name="plus" size={20} color="#020617" />
-                <Text style={styles.submitText}>Add Expense</Text>
+                <Text style={styles.submitText}>{income ? 'Add Income' : repeat ? 'Add Monthly Expense' : 'Add Expense'}</Text>
               </>
             )}
           </PressableScale>
@@ -151,7 +206,7 @@ export default function AddScreen({
         </View>
         {expenses.length === 0 && (
           <Text style={{ color: t.textFaint, fontSize: 12, textAlign: 'center', paddingVertical: 12 }}>
-            No expenses yet. Add your first one above.
+            Nothing logged yet. Add your first entry above.
           </Text>
         )}
         {expenses.slice(0, 3).map((e) => (
@@ -162,13 +217,17 @@ export default function AddScreen({
                 <View style={{ flex: 1 }}>
                   <Text numberOfLines={1} style={{ color: t.text, fontWeight: '700', fontSize: 13 }}>
                     {e.item}
+                    {e.recurringId ? '  🔁' : ''}
                   </Text>
                   <Text style={{ color: t.textMuted, fontSize: 11 }}>
                     {formatTime(e.timestamp)} • {formatDate(e.timestamp)} ({formatDay(e.timestamp).slice(0, 3)})
                   </Text>
                 </View>
               </View>
-              <Text style={{ color: t.accent, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{peso(e.amount)}</Text>
+              <Text style={{ color: isIncome(e) ? t.income : t.accent, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+                {isIncome(e) ? '+' : ''}
+                {peso(e.amount)}
+              </Text>
             </View>
           </FadeInView>
         ))}
@@ -177,9 +236,60 @@ export default function AddScreen({
   );
 }
 
+// Expense / Income switch with a pill that slides between the two.
+function KindToggle({ theme: t, kind, onChange }: { theme: Theme; kind: Kind; onChange: (k: Kind) => void }) {
+  const [width, setWidth] = useState(0);
+  const [pos] = useState(() => new Animated.Value(kind === 'income' ? 1 : 0));
+
+  useEffect(() => {
+    Animated.spring(pos, { toValue: kind === 'income' ? 1 : 0, useNativeDriver: true, speed: 18, bounciness: 8 }).start();
+  }, [kind, pos]);
+
+  const half = width / 2;
+  const option = (k: Kind, label: string, icon: keyof typeof Feather.glyphMap) => {
+    const active = kind === k;
+    const color = active ? '#020617' : t.textMuted;
+    return (
+      <Pressable key={k} onPress={() => onChange(k)} style={styles.toggleBtn}>
+        <Feather name={icon} size={15} color={color} />
+        <Text style={{ color, fontWeight: '700', fontSize: 13 }}>{label}</Text>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View
+      style={[styles.toggle, { backgroundColor: t.input, borderColor: t.border }]}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width - 8)}
+    >
+      {width > 0 && (
+        <Animated.View
+          style={[
+            styles.togglePill,
+            {
+              width: half,
+              backgroundColor: kind === 'income' ? t.income : t.accent,
+              transform: [{ translateX: Animated.multiply(pos, half) }],
+            },
+          ]}
+        />
+      )}
+      {option('expense', 'Expense', 'arrow-up-right')}
+      {option('income', 'Income', 'arrow-down-left')}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   banner: { padding: 16, borderRadius: 18, borderWidth: 1 },
   bannerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  incomeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   small: { fontSize: 12, fontWeight: '500' },
   big: { fontSize: 26, fontWeight: '800' },
   medium: { fontSize: 18, fontWeight: '700' },
@@ -196,10 +306,22 @@ const styles = StyleSheet.create({
   },
   card: { padding: 18, borderRadius: 18, borderWidth: 1, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 14, fontWeight: '600' },
   label: { fontSize: 12, fontWeight: '500', marginTop: 8 },
   amountInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 24, fontWeight: '800' },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
+  repeatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  toggle: { flexDirection: 'row', padding: 4, borderRadius: 14, borderWidth: 1 },
+  togglePill: { position: 'absolute', top: 4, bottom: 4, left: 4, borderRadius: 10 },
+  toggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
   submit: {
     marginTop: 12,
     paddingVertical: 14,

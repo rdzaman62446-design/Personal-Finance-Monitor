@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
-import { CATEGORIES, Expense, formatDate, formatDay, formatTime, peso } from '../expenses';
+import { CATEGORIES, Expense, formatDate, formatDay, formatTime, isIncome, peso, totalIncome, totalSpent } from '../expenses';
 import { Theme } from '../theme';
 
 type Props = {
@@ -24,11 +24,17 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
         e.item.toLowerCase().includes(q) ||
         formatDate(e.timestamp).toLowerCase().includes(q) ||
         formatDay(e.timestamp).toLowerCase().includes(q);
-      return matchesSearch && (filter === 'All' || e.category === filter);
+      const matchesFilter =
+        filter === 'All' ||
+        (filter === 'Expenses' && !isIncome(e)) ||
+        (filter === 'Income' && isIncome(e)) ||
+        e.category === filter;
+      return matchesSearch && matchesFilter;
     });
   }, [expenses, query, filter]);
 
-  const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0);
+  const filteredSpent = totalSpent(filtered);
+  const filteredIncome = totalIncome(filtered);
 
   const pill = (label: string, value: string) => {
     const active = filter === value;
@@ -65,7 +71,9 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
 
       <FadeInView delay={60}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {pill('All Categories', 'All')}
+          {pill('All', 'All')}
+          {pill('💸 Expenses', 'Expenses')}
+          {pill('💰 Income', 'Income')}
           {CATEGORIES.map((c) => pill(`${c.icon} ${c.name}`, c.name))}
         </ScrollView>
       </FadeInView>
@@ -81,7 +89,7 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
           <FadeInView style={{ alignItems: 'center', paddingVertical: 36, gap: 8 }}>
             <Feather name="inbox" size={28} color={t.textFaint} />
             <Text style={{ color: t.textFaint, fontSize: 13 }}>
-              {expenses.length === 0 ? 'No expenses recorded yet.' : 'Nothing matches your search.'}
+              {expenses.length === 0 ? 'Nothing recorded yet.' : 'Nothing matches your search.'}
             </Text>
           </FadeInView>
         ) : (
@@ -104,10 +112,16 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
                     </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: t.text, fontWeight: '600', fontSize: 13 }}>{e.item}</Text>
+                    <Text style={{ color: t.text, fontWeight: '600', fontSize: 13 }}>
+                      {e.item}
+                      {e.recurringId ? '  🔁' : ''}
+                    </Text>
                     <Text style={[styles.tag, { color: t.textMuted, borderColor: t.border }]}>{e.category}</Text>
                   </View>
-                  <Text style={{ color: t.accent, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+                  <Text
+                    style={{ color: isIncome(e) ? t.income : t.accent, fontWeight: '700', fontVariant: ['tabular-nums'] }}
+                  >
+                    {isIncome(e) ? '+' : ''}
                     {peso(e.amount)}
                   </Text>
                 </View>
@@ -121,8 +135,18 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
             <Text style={{ color: t.accent, fontWeight: '800', fontSize: 12, letterSpacing: 1 }}>TOTAL SPENT</Text>
             <Text style={{ color: t.textMuted, fontSize: 11 }}>Filtered Count: {filtered.length} items</Text>
           </View>
-          <AnimatedNumber value={filteredTotal} format={peso} style={{ color: t.accent, fontWeight: '800', fontSize: 16 }} />
+          <AnimatedNumber value={filteredSpent} format={peso} style={{ color: t.accent, fontWeight: '800', fontSize: 16 }} />
         </View>
+        {filteredIncome > 0 && (
+          <View style={[styles.footer, styles.incomeFooter, { backgroundColor: t.cardAlt }]}>
+            <Text style={{ color: t.income, fontWeight: '800', fontSize: 12, letterSpacing: 1 }}>TOTAL INCOME</Text>
+            <AnimatedNumber
+              value={filteredIncome}
+              format={(n) => '+' + peso(n)}
+              style={{ color: t.income, fontWeight: '800', fontSize: 16 }}
+            />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -143,4 +167,5 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderTopWidth: 2 },
+  incomeFooter: { borderTopWidth: 0, paddingTop: 0 },
 });

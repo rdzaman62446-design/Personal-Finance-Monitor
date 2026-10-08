@@ -1,22 +1,49 @@
+// A logged transaction. Entries saved before income tracking have no `kind`
+// and are expenses.
 export type Expense = {
   id: string;
   item: string;
   amount: number;
   category: string;
   timestamp: number;
+  kind?: 'expense' | 'income';
+  // Set on entries created by a recurring rule.
+  recurringId?: string;
 };
 
-export const CATEGORIES = [
-  { name: 'Food & Dining', icon: '🍔' },
-  { name: 'Commute / Transport', icon: '🚗' },
-  { name: 'Shopping', icon: '🛍️' },
-  { name: 'Bills & Utilities', icon: '💡' },
-  { name: 'Entertainment', icon: '🎬' },
-  { name: 'Other', icon: '📦' },
+export type Kind = 'expense' | 'income';
+
+export type Category = { name: string; icon: string; color: string };
+
+export const CATEGORIES: Category[] = [
+  { name: 'Food & Dining', icon: '🍔', color: '#f59e0b' },
+  { name: 'Commute / Transport', icon: '🚗', color: '#3b82f6' },
+  { name: 'Shopping', icon: '🛍️', color: '#a855f7' },
+  { name: 'Bills & Utilities', icon: '💡', color: '#14b8a6' },
+  { name: 'Entertainment', icon: '🎬', color: '#f43f5e' },
+  { name: 'Other', icon: '📦', color: '#94a3b8' },
 ];
 
-export const categoryIcon = (name: string) =>
-  CATEGORIES.find((c) => c.name === name)?.icon ?? '📦';
+export const INCOME_CATEGORIES: Category[] = [
+  { name: 'Salary', icon: '💼', color: '#10b981' },
+  { name: 'Freelance / Side Job', icon: '💻', color: '#22c55e' },
+  { name: 'Gift / Allowance', icon: '🎁', color: '#84cc16' },
+  { name: 'Other Income', icon: '💰', color: '#4ade80' },
+];
+
+const ALL_CATEGORIES = [...CATEGORIES, ...INCOME_CATEGORIES];
+
+export const categoriesFor = (kind: Kind) => (kind === 'income' ? INCOME_CATEGORIES : CATEGORIES);
+
+export const categoryIcon = (name: string) => ALL_CATEGORIES.find((c) => c.name === name)?.icon ?? '📦';
+
+export const categoryColor = (name: string) => ALL_CATEGORIES.find((c) => c.name === name)?.color ?? '#94a3b8';
+
+export const isIncome = (e: Expense) => e.kind === 'income';
+
+export const totalSpent = (list: Expense[]) => list.reduce((s, e) => (isIncome(e) ? s : s + e.amount), 0);
+
+export const totalIncome = (list: Expense[]) => list.reduce((s, e) => (isIncome(e) ? s + e.amount : s), 0);
 
 // Display parts are derived from the timestamp, so "today" compares the full
 // calendar date (year included) rather than a "MMM DD" string.
@@ -44,12 +71,13 @@ export const parseAmount = (text: string): number | null => {
 
 export const toCSV = (expenses: Expense[]) => {
   const q = (s: string) => `"${s.replace(/"/g, '""')}"`;
-  const headers = ['Time', 'Date', 'Day', 'What did I spend on', 'Category', 'How Much (PHP)'];
+  const headers = ['Time', 'Date', 'Day', 'Type', 'Description', 'Category', 'How Much (PHP)'];
   const rows = expenses.map((e) =>
     [
       q(formatTime(e.timestamp)),
       q(formatDate(e.timestamp)),
       q(formatDay(e.timestamp)),
+      isIncome(e) ? 'Income' : 'Expense',
       q(e.item),
       q(e.category),
       e.amount.toFixed(2),
@@ -82,3 +110,10 @@ export const monthLabel = ({ year, month }: Month) =>
   new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 export const daysInMonth = ({ year, month }: Month) => new Date(year, month + 1, 0).getDate();
+
+export const monthKey = ({ year, month }: Month) => `${year}-${String(month + 1).padStart(2, '0')}`;
+
+export const parseMonthKey = (key: string): Month => {
+  const [y, m] = key.split('-').map((n) => parseInt(n, 10));
+  return { year: y, month: m - 1 };
+};

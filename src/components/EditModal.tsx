@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Expense, parseAmount } from '../expenses';
+import { categoriesFor, Expense, isIncome, parseAmount } from '../expenses';
 import { Theme } from '../theme';
 import CategoryDropdown from './CategoryDropdown';
 
@@ -42,7 +42,7 @@ function EditForm({ theme: t, expense, onClose, onSave }: Props & { expense: Exp
   return (
     <View style={[styles.sheet, { backgroundColor: t.card, borderColor: t.border }]}>
       <View style={styles.header}>
-        <Text style={{ color: t.text, fontWeight: '700', fontSize: 15 }}>Edit Expense</Text>
+        <Text style={{ color: t.text, fontWeight: '700', fontSize: 15 }}>{isIncome(expense) ? 'Edit Income' : 'Edit Expense'}</Text>
         <Pressable hitSlop={8} onPress={onClose}>
           <Feather name="x" size={18} color={t.textMuted} />
         </Pressable>
@@ -60,7 +60,7 @@ function EditForm({ theme: t, expense, onClose, onSave }: Props & { expense: Exp
       />
 
       <Text style={[styles.label, { color: t.textMuted }]}>Category</Text>
-      <CategoryDropdown theme={t} value={category} onChange={setCategory} />
+      <CategoryDropdown theme={t} value={category} onChange={setCategory} options={categoriesFor(expense.kind ?? 'expense')} />
 
       <View style={styles.actions}>
         <Pressable onPress={onClose} style={[styles.btn, { borderColor: t.border, borderWidth: 1 }]}>

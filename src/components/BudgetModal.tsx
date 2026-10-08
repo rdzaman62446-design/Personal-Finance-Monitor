@@ -8,12 +8,14 @@ import { PressableScale } from './motion';
 type Props = {
   theme: Theme;
   visible: boolean;
+  title: string;
+  subtitle: string;
   current: number | null;
   onClose: () => void;
   onSave: (budget: number | null) => void;
 };
 
-// Bottom sheet for setting (or removing) the monthly budget.
+// Bottom sheet for setting (or removing) a budget amount.
 export default function BudgetModal(props: Props) {
   return (
     <Modal visible={props.visible} transparent animationType="fade" onRequestClose={props.onClose}>
@@ -27,7 +29,7 @@ export default function BudgetModal(props: Props) {
   );
 }
 
-function BudgetSheet({ theme: t, current, onSave }: Props) {
+function BudgetSheet({ theme: t, title, subtitle, current, onSave }: Props) {
   const [text, setText] = useState(current ? current.toString() : '');
   const [slide] = useState(() => new Animated.Value(0));
 
@@ -47,10 +49,8 @@ function BudgetSheet({ theme: t, current, onSave }: Props) {
     <Animated.View style={{ transform: [{ translateY }] }}>
       <Pressable style={[styles.sheet, { backgroundColor: t.card, borderColor: t.border }]}>
         <View style={[styles.handle, { backgroundColor: t.border }]} />
-        <Text style={{ color: t.text, fontWeight: '700', fontSize: 17 }}>Monthly budget</Text>
-        <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 8 }}>
-          How much do you want to spend at most each month?
-        </Text>
+        <Text style={{ color: t.text, fontWeight: '700', fontSize: 17 }}>{title}</Text>
+        <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 8 }}>{subtitle}</Text>
         <TextInput
           value={text}
           onChangeText={setText}

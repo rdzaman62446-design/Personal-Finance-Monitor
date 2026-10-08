@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { CATEGORIES, categoryIcon } from '../expenses';
+import { Category, CATEGORIES, categoryIcon } from '../expenses';
 import { Theme } from '../theme';
 import { FadeInView } from './motion';
 
@@ -11,10 +11,12 @@ export default function CategoryDropdown({
   theme: t,
   value,
   onChange,
+  options = CATEGORIES,
 }: {
   theme: Theme;
   value: string;
   onChange: (category: string) => void;
+  options?: Category[];
 }) {
   const [open, setOpen] = useState(false);
   const [rotation] = useState(() => new Animated.Value(0));
@@ -52,7 +54,7 @@ export default function CategoryDropdown({
 
       {open && (
         <View style={[styles.list, { borderTopColor: t.border }]}>
-          {CATEGORIES.map((c, i) => {
+          {options.map((c, i) => {
             const active = c.name === value;
             return (
               <FadeInView key={c.name} delay={i * 25} from={-6}>

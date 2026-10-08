@@ -13,6 +13,8 @@ export type Theme = {
   dangerSoft: string;
   amber: string;
   purple: string;
+  income: string;
+  incomeSoft: string;
 };
 
 export const darkTheme: Theme = {
@@ -30,6 +32,8 @@ export const darkTheme: Theme = {
   dangerSoft: 'rgba(244,63,94,0.12)',
   amber: '#fbbf24',
   purple: '#c084fc',
+  income: '#38bdf8',
+  incomeSoft: 'rgba(56,189,248,0.14)',
 };
 
 export const lightTheme: Theme = {
@@ -47,6 +51,8 @@ export const lightTheme: Theme = {
   dangerSoft: 'rgba(244,63,94,0.10)',
   amber: '#d97706',
   purple: '#9333ea',
+  income: '#0284c7',
+  incomeSoft: 'rgba(2,132,199,0.10)',
 };
 
 // Green under 75% of budget, amber up to 100%, red when over.
