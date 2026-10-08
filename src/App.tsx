@@ -22,6 +22,7 @@ import { pickBackup, shareBackup } from './backup';
 import BudgetModal from './components/BudgetModal';
 import EditModal from './components/EditModal';
 import ImportModal from './components/ImportModal';
+import { PagerLockContext } from './components/InnerHorizontalScroll';
 import IncomeSourceModal from './components/IncomeSourceModal';
 import SideMenu from './components/SideMenu';
 import { PressableScale } from './components/motion';
@@ -83,6 +84,8 @@ function Main() {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Paused while a finger is on a horizontal list inside a page (see InnerHorizontalScroll).
+  const [pagerLocked, setPagerLocked] = useState(false);
   const [pastSavingsOpen, setPastSavingsOpen] = useState(false);
   // The income source being edited: { source: null } adds a new one.
   const [sourceTarget, setSourceTarget] = useState<{ source: IncomeSource | null } | null>(null);
@@ -343,67 +346,70 @@ function Main() {
         <Text style={{ color: t.text, fontWeight: '800', fontSize: 18 }}>SpendTrack</Text>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* Swipeable pages; the tab bar highlight follows the scroll position. */}
-        <Animated.ScrollView
-          ref={pagerRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          scrollEventThrottle={16}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-          onMomentumScrollEnd={(e) => {
-            const i = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
-            setTab(TABS[Math.max(0, Math.min(TABS.length - 1, i))].key);
-          }}
-        >
-          <Page width={pageWidth}>
-            <AddScreen
-              theme={t}
-              expenses={expenses}
-              spentToday={spentToday}
-              spentThisMonth={spentThisMonth}
-              incomeThisMonth={incomeThisMonth}
-              monthlyBudget={monthlyBudget}
-              totalSavings={totalSavings}
-              incomeSources={incomeSources}
-              onAddIncomeSource={() => setSourceTarget({ source: null })}
-              onAdd={addEntry}
-              onViewAll={() => switchTab('history')}
-              onSetBudget={() => setBudgetTarget({ category: null })}
-            />
-          </Page>
-          <Page width={pageWidth}>
-            <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteEntry} />
-          </Page>
-          <Page width={pageWidth}>
-            <StatsScreen
-              theme={t}
-              expenses={expenses}
-              monthlyBudget={monthlyBudget}
-              categoryBudgets={categoryBudgets}
-              recurring={recurring}
-              incomeSources={incomeSources}
-              pastSavings={pastSavings}
-              onEditPastSavings={() => setPastSavingsOpen(true)}
-              onEditIncomeSource={(source) => setSourceTarget({ source })}
-              onSetBudget={() => setBudgetTarget({ category: null })}
-              onSetCategoryBudget={(category) => setBudgetTarget({ category })}
-              onDeleteRecurring={deleteRecurring}
-              onBackup={backup}
-              onRestore={restore}
-              onImport={() => setImportOpen(true)}
-              onClear={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setExpenses([]);
-                setRecurring([]);
-                showToast('All entries cleared');
-              }}
-            />
-          </Page>
-        </Animated.ScrollView>
-      </KeyboardAvoidingView>
+      <PagerLockContext.Provider value={setPagerLocked}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          {/* Swipeable pages; the tab bar highlight follows the scroll position. */}
+          <Animated.ScrollView
+            ref={pagerRef}
+            horizontal
+            pagingEnabled
+            scrollEnabled={!pagerLocked}
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={16}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+            onMomentumScrollEnd={(e) => {
+              const i = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
+              setTab(TABS[Math.max(0, Math.min(TABS.length - 1, i))].key);
+            }}
+          >
+            <Page width={pageWidth}>
+              <AddScreen
+                theme={t}
+                expenses={expenses}
+                spentToday={spentToday}
+                spentThisMonth={spentThisMonth}
+                incomeThisMonth={incomeThisMonth}
+                monthlyBudget={monthlyBudget}
+                totalSavings={totalSavings}
+                incomeSources={incomeSources}
+                onAddIncomeSource={() => setSourceTarget({ source: null })}
+                onAdd={addEntry}
+                onViewAll={() => switchTab('history')}
+                onSetBudget={() => setBudgetTarget({ category: null })}
+              />
+            </Page>
+            <Page width={pageWidth}>
+              <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteEntry} />
+            </Page>
+            <Page width={pageWidth}>
+              <StatsScreen
+                theme={t}
+                expenses={expenses}
+                monthlyBudget={monthlyBudget}
+                categoryBudgets={categoryBudgets}
+                recurring={recurring}
+                incomeSources={incomeSources}
+                pastSavings={pastSavings}
+                onEditPastSavings={() => setPastSavingsOpen(true)}
+                onEditIncomeSource={(source) => setSourceTarget({ source })}
+                onSetBudget={() => setBudgetTarget({ category: null })}
+                onSetCategoryBudget={(category) => setBudgetTarget({ category })}
+                onDeleteRecurring={deleteRecurring}
+                onBackup={backup}
+                onRestore={restore}
+                onImport={() => setImportOpen(true)}
+                onClear={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setExpenses([]);
+                  setRecurring([]);
+                  showToast('All entries cleared');
+                }}
+              />
+            </Page>
+          </Animated.ScrollView>
+        </KeyboardAvoidingView>
+      </PagerLockContext.Provider>
 
       <TabBar tab={tab} position={pagePosition} onChange={switchTab} theme={t} />
 

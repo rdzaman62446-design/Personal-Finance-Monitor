@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 
+import InnerHorizontalScroll from '../components/InnerHorizontalScroll';
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import { CATEGORIES, Expense, formatDate, formatDay, formatTime, isIncome, peso, totalIncome, totalSpent } from '../expenses';
 import { Theme } from '../theme';
@@ -70,12 +71,12 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
       </FadeInView>
 
       <FadeInView delay={60}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+        <InnerHorizontalScroll contentContainerStyle={{ gap: 6 }}>
           {pill('All', 'All')}
           {pill('💸 Expenses', 'Expenses')}
           {pill('💰 Income', 'Income')}
           {CATEGORIES.map((c) => pill(`${c.icon} ${c.name}`, c.name))}
-        </ScrollView>
+        </InnerHorizontalScroll>
       </FadeInView>
 
       {filtered.length > 0 && (
