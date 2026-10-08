@@ -28,6 +28,7 @@ All data stays on your phone. Back it up from the menu.
 - Dark mode and the font used for log entries.
 - Custom expense and income categories, each with its own emoji and color.
 - Export to CSV, import from a Google Sheets link or an `.xlsx`/`.csv` file, back up, restore, and clear all data.
+- **Google Sheets sync**: every change is copied to a Google Sheet in your own account (Entries, Daily and Monthly tabs) through a small Apps Script you deploy once. The script and step-by-step setup are inside the app (☰ → Data → Google Sheets sync). It syncs while the app is open; offline changes are sent next time.
 - Shortcuts to budgets, income sources and past savings.
 
 Swipe left and right to move between Add Log, Table Log and Stats.
@@ -69,4 +70,4 @@ npm run lint
 
 Code layout: `src/App.tsx` (state, pager, menu), `src/screens/` (Add, Table Log, Stats),
 `src/components/` (sheets, pickers, charts, animation helpers), and plain logic modules in `src/`
-(`expenses`, `recurring`, `incomeSources`, `goals`, `summary`, `amountQuery`, `importer`, `backup`, `tidy`, `fonts`).
+(`expenses`, `recurring`, `incomeSources`, `goals`, `summary`, `amountQuery`, `importer`, `backup`, `sheetsSync`, `sheetsScript`, `tidy`, `fonts`).

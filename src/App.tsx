@@ -28,6 +28,7 @@ import ImportModal from './components/ImportModal';
 import { PagerLockContext } from './components/InnerHorizontalScroll';
 import IncomeSourceModal from './components/IncomeSourceModal';
 import FontPickerModal from './components/FontPickerModal';
+import SheetsSyncModal from './components/SheetsSyncModal';
 import SideMenu from './components/SideMenu';
 import SummaryModal from './components/SummaryModal';
 import { PressableScale } from './components/motion';
@@ -54,6 +55,7 @@ import { Goal } from './goals';
 import { ImportResult } from './importer';
 import { IncomeSource } from './incomeSources';
 import { collectDue, entryFor, Recurring } from './recurring';
+import { buildPayload, connectSheet, hashPayload, newSecret, pushToSheet, SheetsSync, shouldAutoSync } from './sheetsSync';
 import AddScreen from './screens/AddScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import StatsScreen from './screens/StatsScreen';
@@ -91,6 +93,12 @@ function Main() {
   const [logFontKey, setLogFontKey] = usePersistentState('spendtrack.logFont', 'system');
   const [customCategories, setCustomCats] = usePersistentState<CustomCategory[]>('spendtrack.customCategories', []);
   const [goals, setGoals] = usePersistentState<Goal[]>('spendtrack.goals', []);
+  const [sheetsSync, setSheetsSync] = usePersistentState<SheetsSync | null>('spendtrack.sheetsSync', null);
+  // This phone's link code for the sheet; kept after "Stop syncing" so reconnecting still works.
+  const [deviceSecret, setDeviceSecret] = usePersistentState('spendtrack.sheetsSecret', '');
+  const [sheetsSyncing, setSheetsSyncing] = useState(false);
+  const [sheetsOpen, setSheetsOpen] = useState(false);
+  const syncInFlight = useRef(false);
   // Make custom categories visible to every category lookup before the screens render.
   setCustomCategories(customCategories);
   const [fontsReady] = useLoadLogFonts();
@@ -139,6 +147,64 @@ function Main() {
       return fresh.length ? [...prev, ...fresh].sort((a, b) => b.timestamp - a.timestamp) : prev;
     });
   }, [expensesLoaded, recurringLoaded, recurring, now, setRecurring, setExpenses]);
+
+  // Sends everything to the linked Google Sheet. Skips when nothing changed since
+  // the last successful sync unless forced.
+  const syncToSheet = useCallback(
+    async (force: boolean) => {
+      if (!sheetsSync || syncInFlight.current) return;
+      const payload = buildPayload(expenses);
+      const hash = hashPayload(payload);
+      if (!force && !shouldAutoSync(sheetsSync, hash)) return;
+      syncInFlight.current = true;
+      setSheetsSyncing(true);
+      try {
+        await pushToSheet(sheetsSync.url, sheetsSync.secret, payload);
+        setSheetsSync((prev) => prev && { ...prev, lastSync: Date.now(), lastHash: hash, lastError: null });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const failedAt = Date.now();
+        setSheetsSync(
+          (prev) => prev && { ...prev, failedHash: hash, failedAt, lastError: /network|fetch/i.test(message) ? 'No internet — will retry' : message },
+        );
+      } finally {
+        syncInFlight.current = false;
+        setSheetsSyncing(false);
+      }
+    },
+    [sheetsSync, expenses, setSheetsSync],
+  );
+
+  // Auto-sync a few seconds after any change, and when the app comes back to the foreground.
+  useEffect(() => {
+    if (!expensesLoaded || !sheetsSync) return;
+    const timer = setTimeout(() => syncToSheet(false), 4000);
+    return () => clearTimeout(timer);
+  }, [expensesLoaded, expenses, now, sheetsSync, syncToSheet]);
+
+  const connectToSheet = async (url: string) => {
+    // Keep this phone's secret when reconnecting so the script still recognises it.
+    const secret = deviceSecret || newSecret();
+    const { sync, rows } = await connectSheet(url, secret, expenses);
+    setDeviceSecret(secret);
+    setSheetsSync(sync);
+    setSheetsOpen(false);
+    showToast(`✅ Synced ${rows} entries to Google Sheets`);
+  };
+
+  const disconnectSheet = () =>
+    Alert.alert('Stop syncing?', 'Your Google Sheet keeps what’s already there, but new changes won’t be sent.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Stop',
+        style: 'destructive',
+        onPress: () => {
+          setSheetsSync(null);
+          setSheetsOpen(false);
+          showToast('Google Sheets sync stopped');
+        },
+      },
+    ]);
 
   const todayEntries = useMemo(() => expenses.filter((e) => isSameDay(e.timestamp, now)), [expenses, now]);
   const monthEntries = useMemo(() => {
@@ -589,6 +655,12 @@ function Main() {
           {
             title: 'DATA',
             items: [
+              {
+                icon: 'grid',
+                label: `Google Sheets sync · ${sheetsSync ? (sheetsSync.lastError ? 'error' : 'on') : 'off'}`,
+                onPress: () => setSheetsOpen(true),
+                color: sheetsSync?.lastError ? t.danger : undefined,
+              },
               { icon: 'edit-3', label: 'Tidy up entry text', onPress: tidyExisting },
               { icon: 'download', label: 'Export to CSV', onPress: exportCSV },
               { icon: 'file-plus', label: 'Import from spreadsheet', onPress: () => setImportOpen(true) },
@@ -598,6 +670,16 @@ function Main() {
             ],
           },
         ]}
+      />
+      <SheetsSyncModal
+        theme={t}
+        visible={sheetsOpen}
+        sync={sheetsSync}
+        syncing={sheetsSyncing}
+        onClose={() => setSheetsOpen(false)}
+        onConnect={connectToSheet}
+        onSyncNow={() => syncToSheet(true)}
+        onDisconnect={disconnectSheet}
       />
       <CategoriesModal
         theme={t}
