@@ -1,0 +1,46 @@
+# Sends JS/screen changes to installed apps over the air. Runs on every push
+# to main; phones pick the update up the next time the app is opened.
+# Only reaches installs with the same app.json version (runtime), so native
+# changes need a version bump and a new "Release APK" run instead.
+name: Publish OTA update
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Expo project is linked
+        id: linked
+        run: |
+          if node -e "process.exit(require('./app.json').expo.extra?.eas?.projectId ? 0 : 1)"; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No Expo project ID yet. Run the 'Setup Expo project' workflow first."
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.linked.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.linked.outputs.ok == 'true'
+        run: npm ci
+      - name: Typecheck
+        if: steps.linked.outputs.ok == 'true'
+        run: npx tsc --noEmit
+      - name: Publish update
+        if: steps.linked.outputs.ok == 'true'
+        run: |
+          npx --yes eas-cli@latest update --channel production --platform android \
+            --environment production --non-interactive \
+            --message "$(git log -1 --pretty=%s)"

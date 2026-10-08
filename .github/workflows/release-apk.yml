@@ -1,0 +1,54 @@
+# Builds an installable APK on Expo's servers and publishes it as a GitHub
+# Release tagged v<version> (from app.json). Installed apps see the new
+# release on launch and offer to download it.
+# Bump "version" in app.json before running this for a new native release.
+name: Release APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Release v$VERSION already exists. Bump expo.version in app.json first."
+            exit 1
+          fi
+      - name: Build APK with EAS
+        run: |
+          npx --yes eas-cli@latest build --platform android --profile production \
+            --non-interactive --wait --json > build.json
+          cat build.json
+      - name: Download APK
+        run: |
+          URL=$(node -p "require('./build.json')[0].artifacts.buildUrl")
+          curl -fL "$URL" -o "SpendTrack-v${{ steps.version.outputs.version }}.apk"
+      - name: Publish GitHub Release
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            "SpendTrack-v${{ steps.version.outputs.version }}.apk" \
+            --target "${{ github.sha }}" \
+            --title "SpendTrack v${{ steps.version.outputs.version }}" \
+            --notes "Download the .apk below on your Android phone and tap it to install."
