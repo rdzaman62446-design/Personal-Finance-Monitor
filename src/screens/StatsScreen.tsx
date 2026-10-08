@@ -35,6 +35,7 @@ type Props = {
   onDeleteRecurring: (rule: Recurring) => void;
   onBackup: () => void;
   onRestore: () => void;
+  onImport: () => void;
   onClear: () => void;
 };
 
@@ -49,6 +50,7 @@ export default function StatsScreen({
   onDeleteRecurring,
   onBackup,
   onRestore,
+  onImport,
   onClear,
 }: Props) {
   const [thisMonth] = useState(() => monthOf(Date.now()));
@@ -291,11 +293,12 @@ export default function StatsScreen({
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
           {header('hard-drive', 'Your Data')}
           <Text style={{ color: t.textMuted, fontSize: 12 }}>
-            Data lives only on this phone. Back up to Google Drive or Files so you never lose it.
+            Data lives only on this phone. Back up to Google Drive or Files so you never lose it. Import adds rows from a spreadsheet.
           </Text>
           <View style={styles.actions}>
             {action('upload-cloud', 'Backup', onBackup, t.accent)}
             {action('download-cloud', 'Restore', onRestore)}
+            {action('file-plus', 'Import', onImport)}
             {action('trash-2', 'Clear', confirmClear, t.danger)}
           </View>
         </View>

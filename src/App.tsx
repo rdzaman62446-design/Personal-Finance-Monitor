@@ -22,11 +22,13 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickBackup, shareBackup } from './backup';
 import BudgetModal from './components/BudgetModal';
 import EditModal from './components/EditModal';
+import ImportModal from './components/ImportModal';
 import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
 import {
   categoryIcon,
   Expense,
+  formatDate,
   isIncome,
   isInMonth,
   isSameDay,
@@ -37,6 +39,7 @@ import {
   totalIncome,
   totalSpent,
 } from './expenses';
+import { ImportResult } from './importer';
 import { collectDue, entryFor, Recurring } from './recurring';
 import AddScreen from './screens/AddScreen';
 import HistoryScreen from './screens/HistoryScreen';
@@ -74,6 +77,7 @@ function Main() {
   // Which budget the budget sheet is editing: the overall monthly one (category null) or a category's.
   const [budgetTarget, setBudgetTarget] = useState<{ category: string | null } | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const pagerRef = useRef<ScrollView>(null);
   const { width: pageWidth } = useWindowDimensions();
   const [scrollX] = useState(() => new Animated.Value(0));
@@ -254,6 +258,41 @@ function Main() {
     }
   };
 
+  // Shows what was found in the spreadsheet and adds the rows that aren't already in the app.
+  const confirmImport = (result: ImportResult) => {
+    const ids = new Set(expenses.map((e) => e.id));
+    const fresh = result.entries.filter((e) => !ids.has(e.id));
+    const dupes = result.entries.length - fresh.length;
+    if (fresh.length === 0) {
+      setImportOpen(false);
+      Alert.alert('Already imported', `All ${result.entries.length} rows from "${result.sheetName}" are already in the app.`);
+      return;
+    }
+    const times = fresh.map((e) => e.timestamp);
+    const range = `${formatDate(Math.min(...times))} – ${formatDate(Math.max(...times))}`;
+    const lines = [
+      `Sheet: ${result.sheetName}`,
+      `${fresh.length} new entries (${range})`,
+      `Spent: ${peso(totalSpent(fresh))}`,
+      totalIncome(fresh) > 0 ? `Income: ${peso(totalIncome(fresh))}` : null,
+      dupes > 0 ? `${dupes} already in the app — skipped` : null,
+      result.skipped > 0 ? `${result.skipped} rows couldn’t be read — skipped` : null,
+    ].filter(Boolean);
+    Alert.alert('Import these entries?', lines.join('\n'), [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Import',
+        onPress: () => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setExpenses((prev) => [...prev, ...fresh].sort((a, b) => b.timestamp - a.timestamp));
+          setImportOpen(false);
+          setNow(Date.now());
+          showToast(`Imported ${fresh.length} entries`, 'VIEW', () => switchTab('history'));
+        },
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar style={darkMode ? 'light' : 'dark'} />
@@ -321,6 +360,7 @@ function Main() {
               onDeleteRecurring={deleteRecurring}
               onBackup={backup}
               onRestore={restore}
+              onImport={() => setImportOpen(true)}
               onClear={() => {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                 setExpenses([]);
@@ -336,6 +376,7 @@ function Main() {
 
       <Toast theme={t} toast={toast} onHide={hideToast} />
       <EditModal theme={t} expense={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
+      <ImportModal theme={t} visible={importOpen} onClose={() => setImportOpen(false)} onResult={confirmImport} />
       <BudgetModal
         theme={t}
         visible={budgetTarget != null}
