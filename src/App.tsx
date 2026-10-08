@@ -30,6 +30,7 @@ import IncomeSourceModal from './components/IncomeSourceModal';
 import FontPickerModal from './components/FontPickerModal';
 import SheetsSyncModal from './components/SheetsSyncModal';
 import SideMenu from './components/SideMenu';
+import PlanLineModal from './components/PlanLineModal';
 import SummaryModal from './components/SummaryModal';
 import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
@@ -43,6 +44,7 @@ import {
   isSameDay,
   monthKey,
   Month,
+  monthLabel,
   monthOf,
   peso,
   setCustomCategories,
@@ -51,6 +53,7 @@ import {
   totalSpent,
 } from './expenses';
 import { fontByKey, LOG_FONTS, LogFontContext, useLoadLogFonts } from './fonts';
+import { emptyPlan, lineAmount, linesFromApp, Plan, PlanLine } from './forecast';
 import { Goal } from './goals';
 import { ImportResult } from './importer';
 import { IncomeSource } from './incomeSources';
@@ -58,18 +61,20 @@ import { collectDue, entryFor, Recurring } from './recurring';
 import { buildPayload, connectSheet, hashPayload, newSecret, pushToSheet, SheetsSync, shouldAutoSync } from './sheetsSync';
 import AddScreen from './screens/AddScreen';
 import HistoryScreen from './screens/HistoryScreen';
+import ForecastScreen from './screens/ForecastScreen';
 import StatsScreen from './screens/StatsScreen';
 import { usePersistentState } from './storage';
 import { darkTheme, lightTheme } from './theme';
 import { tidyText } from './tidy';
 import { useUpdateCheck, versionLabel } from './updates';
 
-type Tab = 'add' | 'history' | 'stats';
+type Tab = 'add' | 'history' | 'stats' | 'plan';
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { key: 'add', label: 'Add Log', icon: 'plus' },
   { key: 'history', label: 'Table Log', icon: 'list' },
   { key: 'stats', label: 'Stats', icon: 'bar-chart-2' },
+  { key: 'plan', label: 'Forecast', icon: 'compass' },
 ];
 
 export default function App() {
@@ -93,6 +98,10 @@ function Main() {
   const [logFontKey, setLogFontKey] = usePersistentState('spendtrack.logFont', 'system');
   const [customCategories, setCustomCats] = usePersistentState<CustomCategory[]>('spendtrack.customCategories', []);
   const [goals, setGoals] = usePersistentState<Goal[]>('spendtrack.goals', []);
+  const [savedPlan, setSavedPlan] = usePersistentState<Plan>('spendtrack.plan', emptyPlan);
+  const [planLineTarget, setPlanLineTarget] = useState<PlanLine | { kind: PlanLine['kind'] } | null>(null);
+  const [cellTarget, setCellTarget] = useState<{ line: PlanLine; month: Month } | null>(null);
+  const [planStartOpen, setPlanStartOpen] = useState(false);
   const [sheetsSync, setSheetsSync] = usePersistentState<SheetsSync | null>('spendtrack.sheetsSync', null);
   // This phone's link code for the sheet; kept after "Stop syncing" so reconnecting still works.
   const [deviceSecret, setDeviceSecret] = usePersistentState('spendtrack.sheetsSecret', '');
@@ -205,6 +214,16 @@ function Main() {
         },
       },
     ]);
+
+  // Until the user edits it, the forecast is pre-filled from income sources and monthly expenses.
+  const plan = useMemo(
+    () => (savedPlan.seeded ? savedPlan : { ...savedPlan, lines: linesFromApp(savedPlan, incomeSources, recurring) }),
+    [savedPlan, incomeSources, recurring],
+  );
+  const importablePlanLines = useMemo(() => linesFromApp(plan, incomeSources, recurring), [plan, incomeSources, recurring]);
+  const updatePlan = (change: (p: Plan) => Plan) => setSavedPlan(change({ ...plan, seeded: true }));
+
+  const saveTotal = (pastSavings ?? 0) + totalIncome(expenses) - totalSpent(expenses);
 
   const todayEntries = useMemo(() => expenses.filter((e) => isSameDay(e.timestamp, now)), [expenses, now]);
   const monthEntries = useMemo(() => {
@@ -411,6 +430,33 @@ function Main() {
     showToast(`"${g.name}" deleted`, 'UNDO', () => setGoals((prev) => [...prev, g]));
   };
 
+  const savePlanLine = (line: PlanLine) => {
+    updatePlan((p) => {
+      const exists = p.lines.some((l) => l.id === line.id);
+      return { ...p, lines: exists ? p.lines.map((l) => (l.id === line.id ? line : l)) : [...p.lines, line] };
+    });
+    setPlanLineTarget(null);
+  };
+
+  const deletePlanLine = (line: PlanLine) => {
+    updatePlan((p) => ({ ...p, lines: p.lines.filter((l) => l.id !== line.id) }));
+    setPlanLineTarget(null);
+    showToast(`"${line.name}" removed from forecast`, 'UNDO', () => setSavedPlan((p) => ({ ...p, lines: [...p.lines, line] })));
+  };
+
+  const setPlanCell = (amount: number | null) => {
+    if (!cellTarget) return;
+    const key = monthKey(cellTarget.month);
+    const id = cellTarget.line.id;
+    updatePlan((p) => {
+      const month = { ...(p.overrides[key] ?? {}) };
+      if (amount == null) delete month[id];
+      else month[id] = amount;
+      return { ...p, overrides: { ...p.overrides, [key]: month } };
+    });
+    setCellTarget(null);
+  };
+
   const savePastSavings = (amount: number | null) => {
     setPastSavings(amount);
     setPastSavingsOpen(false);
@@ -451,7 +497,7 @@ function Main() {
 
   const backup = async () => {
     try {
-      await shareBackup({ expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings, customCategories, goals });
+      await shareBackup({ expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings, customCategories, goals, plan: savedPlan.seeded ? savedPlan : null });
     } catch (err) {
       Alert.alert('Backup failed', String(err));
     }
@@ -473,6 +519,7 @@ function Main() {
           return [...prev, ...incoming.filter((x) => !seen.has(key(x)))];
         };
         if (data.customCategories.length) setCustomCats((prev) => mergeBy<CustomCategory>((c) => c.name)(prev, data.customCategories));
+        if (data.plan) setSavedPlan(data.plan);
         if (data.goals.length) setGoals((prev) => mergeBy<Goal>((g) => g.id)(prev, data.goals));
         if (data.incomeSources.length) {
           setIncomeSources((prev) => {
@@ -612,6 +659,22 @@ function Main() {
                   onEditEntry={setEditing}
                 />
               </Page>
+              <Page width={pageWidth}>
+                <ForecastScreen
+                  theme={t}
+                  plan={plan}
+                  totalSavings={saveTotal}
+                  importable={importablePlanLines.length}
+                  onEditLine={setPlanLineTarget}
+                  onEditCell={(line, month) => setCellTarget({ line, month })}
+                  onSetMonths={(months) => updatePlan((p) => ({ ...p, months }))}
+                  onEditStart={() => setPlanStartOpen(true)}
+                  onImport={() => {
+                    updatePlan((p) => ({ ...p, lines: [...p.lines, ...importablePlanLines] }));
+                    showToast(`Added ${importablePlanLines.length} lines to the forecast`);
+                  }}
+                />
+              </Page>
             </Animated.ScrollView>
           </KeyboardAvoidingView>
         </PagerLockContext.Provider>
@@ -635,6 +698,7 @@ function Main() {
               { icon: 'plus-circle', label: 'Add Log', onPress: () => switchTab('add') },
               { icon: 'list', label: 'Table Log', onPress: () => switchTab('history') },
               { icon: 'bar-chart-2', label: 'Stats', onPress: () => switchTab('stats') },
+              { icon: 'compass', label: 'Forecast', onPress: () => switchTab('plan') },
             ],
           },
           {
@@ -670,6 +734,38 @@ function Main() {
             ],
           },
         ]}
+      />
+      <PlanLineModal
+        theme={t}
+        visible={planLineTarget != null}
+        line={planLineTarget}
+        onClose={() => setPlanLineTarget(null)}
+        onSave={savePlanLine}
+        onDelete={deletePlanLine}
+      />
+      <BudgetModal
+        theme={t}
+        visible={cellTarget != null}
+        title={cellTarget ? `${cellTarget.line.name} · ${monthLabel(cellTarget.month)}` : ''}
+        subtitle="Amount for this month only. Other months keep the usual amount."
+        current={cellTarget ? lineAmount(plan, cellTarget.line, cellTarget.month) : null}
+        removeLabel="Use usual"
+        allowZero
+        onClose={() => setCellTarget(null)}
+        onSave={setPlanCell}
+      />
+      <BudgetModal
+        theme={t}
+        visible={planStartOpen}
+        title="Starting money"
+        subtitle="What you have right now. Leave it on your total savings, or enter an amount."
+        current={plan.start}
+        removeLabel="Use total savings"
+        onClose={() => setPlanStartOpen(false)}
+        onSave={(amount) => {
+          updatePlan((p) => ({ ...p, start: amount }));
+          setPlanStartOpen(false);
+        }}
       />
       <SheetsSyncModal
         theme={t}

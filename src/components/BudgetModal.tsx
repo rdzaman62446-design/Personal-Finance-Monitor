@@ -11,6 +11,10 @@ type Props = {
   title: string;
   subtitle: string;
   current: number | null;
+  // Label for the button that clears the value (default "Remove").
+  removeLabel?: string;
+  // Accept 0 as a value (e.g. "no pay this month").
+  allowZero?: boolean;
   onClose: () => void;
   onSave: (budget: number | null) => void;
 };
@@ -29,8 +33,8 @@ export default function BudgetModal(props: Props) {
   );
 }
 
-function BudgetSheet({ theme: t, title, subtitle, current, onSave }: Props) {
-  const [text, setText] = useState(current ? current.toString() : '');
+function BudgetSheet({ theme: t, title, subtitle, current, removeLabel = 'Remove', allowZero = false, onSave }: Props) {
+  const [text, setText] = useState(current != null && (current > 0 || allowZero) ? current.toString() : '');
   const [slide] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -42,7 +46,7 @@ function BudgetSheet({ theme: t, title, subtitle, current, onSave }: Props) {
     }).start();
   }, [slide]);
 
-  const parsed = parseAmount(text);
+  const parsed = allowZero && /^0*(\.0*)?$/.test(text.trim()) && text.trim() !== '' ? 0 : parseAmount(text);
   const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [400, 0] });
 
   return (
@@ -63,7 +67,7 @@ function BudgetSheet({ theme: t, title, subtitle, current, onSave }: Props) {
         <View style={styles.actions}>
           {current != null && (
             <PressableScale onPress={() => onSave(null)} style={[styles.btn, { borderColor: t.border, borderWidth: 1 }]}>
-              <Text style={{ color: t.danger, fontWeight: '600' }}>Remove</Text>
+              <Text style={{ color: t.danger, fontWeight: '600' }}>{removeLabel}</Text>
             </PressableScale>
           )}
           <PressableScale

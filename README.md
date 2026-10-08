@@ -31,7 +31,12 @@ All data stays on your phone. Back it up from the menu.
 - **Google Sheets sync**: every change is copied to a Google Sheet in your own account (Entries, Daily and Monthly tabs) through a small Apps Script you deploy once. The script and step-by-step setup are inside the app (☰ → Data → Google Sheets sync). It syncs while the app is open; offline changes are sent next time.
 - Shortcuts to budgets, income sources and past savings.
 
-Swipe left and right to move between Add Log, Table Log and Stats.
+**Forecast**
+- A planner like an "assumed savings" sheet. Your income sources and monthly expenses are filled in automatically, and you can add or edit lines (salary, rent, utilities…).
+- A month-by-month table where you can change any single month (e.g. a smaller first paycheck). Weekly income counts the real paydays in each month.
+- Pick a month to see how much you'll have by then, with a 3D chart of your balance growing.
+
+Swipe left and right to move between Add Log, Table Log, Stats and Forecast.
 
 ## First-time setup (once)
 
@@ -68,6 +73,6 @@ npm run typecheck
 npm run lint
 ```
 
-Code layout: `src/App.tsx` (state, pager, menu), `src/screens/` (Add, Table Log, Stats),
+Code layout: `src/App.tsx` (state, pager, menu), `src/screens/` (Add, Table Log, Stats, Forecast),
 `src/components/` (sheets, pickers, charts, animation helpers), and plain logic modules in `src/`
-(`expenses`, `recurring`, `incomeSources`, `goals`, `summary`, `amountQuery`, `importer`, `backup`, `sheetsSync`, `sheetsScript`, `tidy`, `fonts`).
+(`expenses`, `recurring`, `incomeSources`, `goals`, `forecast`, `summary`, `amountQuery`, `importer`, `backup`, `sheetsSync`, `sheetsScript`, `tidy`, `fonts`).

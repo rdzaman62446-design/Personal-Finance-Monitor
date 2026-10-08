@@ -2,6 +2,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import { CustomCategory, Expense } from './expenses';
+import { Plan } from './forecast';
 import { Goal } from './goals';
 import { IncomeSource } from './incomeSources';
 import { Recurring } from './recurring';
@@ -17,6 +18,7 @@ export type BackupData = {
   pastSavings: number | null;
   customCategories: CustomCategory[];
   goals: Goal[];
+  plan: Plan | null;
 };
 
 // Writes all data to a JSON file and opens the share sheet so it can be saved
@@ -25,7 +27,7 @@ export async function shareBackup(data: BackupData) {
   const stamp = new Date().toISOString().slice(0, 10);
   const file = new File(Paths.cache, `SpendTrack_Backup_${stamp}.json`);
   file.create({ overwrite: true });
-  file.write(JSON.stringify({ format: BACKUP_FORMAT, version: 4, exportedAt: Date.now(), ...data }, null, 2));
+  file.write(JSON.stringify({ format: BACKUP_FORMAT, version: 5, exportedAt: Date.now(), ...data }, null, 2));
   await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save SpendTrack backup' });
 }
 
@@ -91,7 +93,7 @@ export async function pickBackup(): Promise<BackupData | null> {
   const expenses = parsed.expenses.filter(isExpense);
   const monthlyBudget = typeof parsed.monthlyBudget === 'number' && parsed.monthlyBudget > 0 ? parsed.monthlyBudget : null;
   // Older backups lack the newer fields: v1 has no budgets per category or recurring
-  // rules, v2 has no income sources or past savings, v3 has no custom categories or goals.
+  // rules, v2 has no income sources or past savings, v3 has no custom categories or goals, v4 has no forecast plan.
   const categoryBudgets: Record<string, number> = {};
   if (parsed.categoryBudgets && typeof parsed.categoryBudgets === 'object') {
     for (const [name, v] of Object.entries(parsed.categoryBudgets)) {
@@ -103,5 +105,9 @@ export async function pickBackup(): Promise<BackupData | null> {
   const pastSavings = typeof parsed.pastSavings === 'number' && parsed.pastSavings > 0 ? parsed.pastSavings : null;
   const customCategories = Array.isArray(parsed.customCategories) ? parsed.customCategories.filter(isCustomCategory) : [];
   const goals = Array.isArray(parsed.goals) ? parsed.goals.filter(isGoal) : [];
-  return { expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings, customCategories, goals };
+  const plan =
+    parsed.plan && Array.isArray(parsed.plan.lines) && typeof parsed.plan.months === 'number'
+      ? { lines: parsed.plan.lines, overrides: parsed.plan.overrides ?? {}, months: parsed.plan.months, start: parsed.plan.start ?? null, seeded: true }
+      : null;
+  return { expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings, customCategories, goals, plan };
 }
