@@ -9,6 +9,8 @@ export type Expense = {
   kind?: 'expense' | 'income';
   // Set on entries created by a recurring rule.
   recurringId?: string;
+  // Set on income logged from a saved income source.
+  incomeSourceId?: string;
 };
 
 export type Kind = 'expense' | 'income';

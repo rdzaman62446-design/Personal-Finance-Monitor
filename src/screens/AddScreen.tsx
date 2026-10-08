@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Switch, Text, TextInput, Vibration, View } from 'react-native';
 
 import CategoryDropdown from '../components/CategoryDropdown';
+import SavedIncomePicker from '../components/SavedIncomePicker';
 import { AnimatedBar, AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import {
   categoriesFor,
@@ -16,6 +17,7 @@ import {
   parseAmount,
   peso,
 } from '../expenses';
+import { IncomeSource } from '../incomeSources';
 import { ordinal } from '../recurring';
 import { budgetColor, Theme } from '../theme';
 
@@ -26,9 +28,13 @@ type Props = {
   spentThisMonth: number;
   incomeThisMonth: number;
   monthlyBudget: number | null;
+  // Past savings + all income − all spending, or null when there's nothing to show yet.
+  totalSavings: number | null;
+  incomeSources: IncomeSource[];
   onAdd: (e: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean) => void;
   onViewAll: () => void;
   onSetBudget: () => void;
+  onAddIncomeSource: () => void;
 };
 
 export default function AddScreen({
@@ -38,15 +44,19 @@ export default function AddScreen({
   spentThisMonth,
   incomeThisMonth,
   monthlyBudget,
+  totalSavings,
+  incomeSources,
   onAdd,
   onViewAll,
   onSetBudget,
+  onAddIncomeSource,
 }: Props) {
   const [kind, setKind] = useState<Kind>('expense');
   const [item, setItem] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(categoriesFor('expense')[0].name);
   const [repeat, setRepeat] = useState(false);
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState(false);
   const [pop] = useState(() => new Animated.Value(0));
   const [today] = useState(() => new Date().getDate());
@@ -67,14 +77,26 @@ export default function AddScreen({
     setKind(next);
     setCategory(categoriesFor(next)[0].name);
     setRepeat(false);
+    setSourceId(null);
+  };
+
+  const pickSource = (src: IncomeSource) => {
+    setSourceId(src.id);
+    setItem(src.name);
+    setAmount(src.amount.toString());
+    setCategory(src.category);
   };
 
   const submit = () => {
     if (!canSubmit) return;
-    onAdd({ item: item.trim(), amount: parsed, category, kind }, repeat && !income);
+    onAdd(
+      { item: item.trim(), amount: parsed, category, kind, ...(income && sourceId ? { incomeSourceId: sourceId } : {}) },
+      repeat && !income,
+    );
     setItem('');
     setAmount('');
     setRepeat(false);
+    setSourceId(null);
     setJustAdded(true);
     Vibration.vibrate(40);
     pop.setValue(0);
@@ -113,6 +135,17 @@ export default function AddScreen({
             </View>
           )}
 
+          {totalSavings != null && (
+            <View style={[styles.savingsRow, { backgroundColor: t.accentSoft }]}>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>🏦 Total savings</Text>
+              <AnimatedNumber
+                value={totalSavings}
+                format={(n) => (n < 0 ? '−' : '') + peso(Math.abs(n))}
+                style={{ color: totalSavings >= 0 ? t.accent : t.danger, fontWeight: '800', fontSize: 13 }}
+              />
+            </View>
+          )}
+
           {monthlyBudget ? (
             <Pressable onPress={onSetBudget} style={{ gap: 6, marginTop: 12 }}>
               <AnimatedBar percent={ratio * 100} color={budgetColor(t, ratio)} trackColor={t.border} />
@@ -134,6 +167,20 @@ export default function AddScreen({
       <FadeInView delay={80}>
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
           <KindToggle theme={t} kind={kind} onChange={switchKind} />
+
+          {income && (
+            <>
+              <Text style={[styles.label, { color: t.textMuted }]}>Saved incomes</Text>
+              <SavedIncomePicker
+                theme={t}
+                sources={incomeSources}
+                entries={expenses}
+                selectedId={sourceId}
+                onPick={pickSource}
+                onAddNew={onAddIncomeSource}
+              />
+            </>
+          )}
 
           <Text style={[styles.label, { color: t.textMuted }]}>How much? (₱)</Text>
           <TextInput
@@ -289,6 +336,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  savingsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
   small: { fontSize: 12, fontWeight: '500' },
   big: { fontSize: 26, fontWeight: '800' },

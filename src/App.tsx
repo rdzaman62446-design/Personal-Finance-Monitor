@@ -23,6 +23,7 @@ import { pickBackup, shareBackup } from './backup';
 import BudgetModal from './components/BudgetModal';
 import EditModal from './components/EditModal';
 import ImportModal from './components/ImportModal';
+import IncomeSourceModal from './components/IncomeSourceModal';
 import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
 import {
@@ -40,6 +41,7 @@ import {
   totalSpent,
 } from './expenses';
 import { ImportResult } from './importer';
+import { IncomeSource } from './incomeSources';
 import { collectDue, entryFor, Recurring } from './recurring';
 import AddScreen from './screens/AddScreen';
 import HistoryScreen from './screens/HistoryScreen';
@@ -72,12 +74,17 @@ function Main() {
   const [monthlyBudget, setMonthlyBudget] = usePersistentState<number | null>('spendtrack.monthlyBudget', null);
   const [categoryBudgets, setCategoryBudgets] = usePersistentState<Record<string, number>>('spendtrack.categoryBudgets', {});
   const [recurring, setRecurring, recurringLoaded] = usePersistentState<Recurring[]>('spendtrack.recurring', []);
+  const [incomeSources, setIncomeSources] = usePersistentState<IncomeSource[]>('spendtrack.incomeSources', []);
+  const [pastSavings, setPastSavings] = usePersistentState<number | null>('spendtrack.pastSavings', null);
   const [tab, setTab] = useState<Tab>('add');
   const [editing, setEditing] = useState<Expense | null>(null);
   // Which budget the budget sheet is editing: the overall monthly one (category null) or a category's.
   const [budgetTarget, setBudgetTarget] = useState<{ category: string | null } | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [pastSavingsOpen, setPastSavingsOpen] = useState(false);
+  // The income source being edited: { source: null } adds a new one.
+  const [sourceTarget, setSourceTarget] = useState<{ source: IncomeSource | null } | null>(null);
   const pagerRef = useRef<ScrollView>(null);
   const { width: pageWidth } = useWindowDimensions();
   const [scrollX] = useState(() => new Animated.Value(0));
@@ -114,6 +121,8 @@ function Main() {
   const spentToday = totalSpent(todayEntries);
   const spentThisMonth = totalSpent(monthEntries);
   const incomeThisMonth = totalIncome(monthEntries);
+  const allIncome = totalIncome(expenses);
+  const totalSavings = pastSavings != null || allIncome > 0 ? (pastSavings ?? 0) + allIncome - totalSpent(expenses) : null;
 
   const showToast = (message: string, actionLabel?: string, onAction?: () => void) =>
     setToast({ id: Date.now(), message, actionLabel, onAction });
@@ -182,6 +191,25 @@ function Main() {
     showToast(`"${rule.item}" stopped`, 'UNDO', () => setRecurring((prev) => [...prev, rule]));
   };
 
+  const saveIncomeSource = (src: IncomeSource) => {
+    const exists = incomeSources.some((x) => x.id === src.id);
+    setIncomeSources((prev) => (exists ? prev.map((x) => (x.id === src.id ? src : x)) : [...prev, src]));
+    setSourceTarget(null);
+    showToast(exists ? `"${src.name}" updated` : `"${src.name}" saved — pick it from Income on payday`);
+  };
+
+  const deleteIncomeSource = (src: IncomeSource) => {
+    setIncomeSources((prev) => prev.filter((x) => x.id !== src.id));
+    setSourceTarget(null);
+    showToast(`"${src.name}" deleted`, 'UNDO', () => setIncomeSources((prev) => [...prev, src]));
+  };
+
+  const savePastSavings = (amount: number | null) => {
+    setPastSavings(amount);
+    setPastSavingsOpen(false);
+    showToast(amount ? 'Past savings saved' : 'Past savings removed');
+  };
+
   const saveBudget = (budget: number | null) => {
     const category = budgetTarget?.category ?? null;
     if (category) {
@@ -216,7 +244,7 @@ function Main() {
 
   const backup = async () => {
     try {
-      await shareBackup({ expenses, monthlyBudget, categoryBudgets, recurring });
+      await shareBackup({ expenses, monthlyBudget, categoryBudgets, recurring, incomeSources, pastSavings });
     } catch (err) {
       Alert.alert('Backup failed', String(err));
     }
@@ -232,6 +260,13 @@ function Main() {
         setRecurring(nextRecurring);
         if (data.monthlyBudget != null) setMonthlyBudget(data.monthlyBudget);
         if (Object.keys(data.categoryBudgets).length) setCategoryBudgets((prev) => ({ ...prev, ...data.categoryBudgets }));
+        if (data.pastSavings != null) setPastSavings(data.pastSavings);
+        if (data.incomeSources.length) {
+          setIncomeSources((prev) => {
+            const ids = new Set(prev.map((x) => x.id));
+            return [...prev, ...data.incomeSources.filter((x) => !ids.has(x.id))];
+          });
+        }
         showToast(`Restored ${data.expenses.length} entries`);
       };
       Alert.alert(
@@ -340,6 +375,9 @@ function Main() {
               spentThisMonth={spentThisMonth}
               incomeThisMonth={incomeThisMonth}
               monthlyBudget={monthlyBudget}
+              totalSavings={totalSavings}
+              incomeSources={incomeSources}
+              onAddIncomeSource={() => setSourceTarget({ source: null })}
               onAdd={addEntry}
               onViewAll={() => switchTab('history')}
               onSetBudget={() => setBudgetTarget({ category: null })}
@@ -355,6 +393,10 @@ function Main() {
               monthlyBudget={monthlyBudget}
               categoryBudgets={categoryBudgets}
               recurring={recurring}
+              incomeSources={incomeSources}
+              pastSavings={pastSavings}
+              onEditPastSavings={() => setPastSavingsOpen(true)}
+              onEditIncomeSource={(source) => setSourceTarget({ source })}
               onSetBudget={() => setBudgetTarget({ category: null })}
               onSetCategoryBudget={(category) => setBudgetTarget({ category })}
               onDeleteRecurring={deleteRecurring}
@@ -376,6 +418,23 @@ function Main() {
 
       <Toast theme={t} toast={toast} onHide={hideToast} />
       <EditModal theme={t} expense={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
+      <IncomeSourceModal
+        theme={t}
+        visible={sourceTarget != null}
+        source={sourceTarget?.source ?? null}
+        onClose={() => setSourceTarget(null)}
+        onSave={saveIncomeSource}
+        onDelete={deleteIncomeSource}
+      />
+      <BudgetModal
+        theme={t}
+        visible={pastSavingsOpen}
+        title="🏦 Savings before SpendTrack"
+        subtitle="Money you had saved before you started logging here. It's added to your total savings."
+        current={pastSavings}
+        onClose={() => setPastSavingsOpen(false)}
+        onSave={savePastSavings}
+      />
       <ImportModal theme={t} visible={importOpen} onClose={() => setImportOpen(false)} onResult={confirmImport} />
       <BudgetModal
         theme={t}

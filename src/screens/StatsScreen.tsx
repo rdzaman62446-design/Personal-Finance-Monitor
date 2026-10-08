@@ -21,6 +21,7 @@ import {
   totalIncome,
   totalSpent,
 } from '../expenses';
+import { IncomeSource, isDueOn, scheduleLabel } from '../incomeSources';
 import { ordinal, Recurring } from '../recurring';
 import { budgetColor, Theme } from '../theme';
 
@@ -30,6 +31,10 @@ type Props = {
   monthlyBudget: number | null;
   categoryBudgets: Record<string, number>;
   recurring: Recurring[];
+  incomeSources: IncomeSource[];
+  pastSavings: number | null;
+  onEditPastSavings: () => void;
+  onEditIncomeSource: (source: IncomeSource | null) => void;
   onSetBudget: () => void;
   onSetCategoryBudget: (category: string) => void;
   onDeleteRecurring: (rule: Recurring) => void;
@@ -45,6 +50,10 @@ export default function StatsScreen({
   monthlyBudget,
   categoryBudgets,
   recurring,
+  incomeSources,
+  pastSavings,
+  onEditPastSavings,
+  onEditIncomeSource,
   onSetBudget,
   onSetCategoryBudget,
   onDeleteRecurring,
@@ -87,6 +96,10 @@ export default function StatsScreen({
   const monthId = `${month.year}-${month.month}`;
   const ratio = monthlyBudget ? spent / monthlyBudget : 0;
   const recurringTotal = recurring.reduce((s, r) => s + r.amount, 0);
+  const allIncome = totalIncome(expenses);
+  const allSpent = totalSpent(expenses);
+  const totalSavings = (pastSavings ?? 0) + allIncome - allSpent;
+  const [nowTs] = useState(() => Date.now());
 
   const confirmClear = () =>
     Alert.alert('Delete all entries?', 'This cannot be undone. Make a backup first if you might need them.', [
@@ -135,6 +148,40 @@ export default function StatsScreen({
 
   return (
     <View style={{ gap: 16 }}>
+      <FadeInView>
+        <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
+          {header('trending-up', 'Total Savings')}
+          <AnimatedNumber
+            value={totalSavings}
+            format={(n) => (n < 0 ? '−' : '') + peso(Math.abs(n))}
+            style={{ color: totalSavings >= 0 ? t.accent : t.danger, fontSize: 28, fontWeight: '800' }}
+          />
+          <View style={{ gap: 6 }}>
+            <Pressable onPress={onEditPastSavings} style={styles.savingsLine}>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>Savings before SpendTrack</Text>
+              <View style={styles.row}>
+                <Text style={{ color: t.text, fontSize: 12, fontWeight: '600' }}>{peso(pastSavings ?? 0)}</Text>
+                <Feather name="edit-2" size={12} color={t.accent} />
+              </View>
+            </Pressable>
+            <View style={styles.savingsLine}>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>+ All income logged</Text>
+              <Text style={{ color: t.income, fontSize: 12, fontWeight: '600' }}>{peso(allIncome)}</Text>
+            </View>
+            <View style={styles.savingsLine}>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>− All spending logged</Text>
+              <Text style={{ color: t.accent, fontSize: 12, fontWeight: '600' }}>{peso(allSpent)}</Text>
+            </View>
+          </View>
+          {pastSavings == null && (
+            <PressableScale onPress={onEditPastSavings} style={[styles.dashed, { borderColor: t.accent }]}>
+              <Feather name="plus" size={14} color={t.accent} />
+              <Text style={{ color: t.accent, fontSize: 12, fontWeight: '600' }}>Add savings you already had</Text>
+            </PressableScale>
+          )}
+        </View>
+      </FadeInView>
+
       <View style={[styles.monthBar, { backgroundColor: t.card, borderColor: t.border }]}>
         <PressableScale hitSlop={10} onPress={() => setMonth(shiftMonth(month, -1))} style={styles.arrow}>
           <Feather name="chevron-left" size={20} color={t.text} />
@@ -262,6 +309,48 @@ export default function StatsScreen({
         </FadeInView>
       </View>
 
+      <FadeInView delay={300}>
+        <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={styles.row}>
+              <Feather name="briefcase" size={16} color={t.income} />
+              <Text style={[styles.cardTitle, { color: t.text }]}>Income Sources</Text>
+            </View>
+            <Pressable hitSlop={10} onPress={() => onEditIncomeSource(null)} style={styles.row}>
+              <Feather name="plus" size={14} color={t.income} />
+              <Text style={{ color: t.income, fontSize: 12, fontWeight: '700' }}>Add</Text>
+            </Pressable>
+          </View>
+          {incomeSources.length === 0 ? (
+            <Text style={{ color: t.textMuted, fontSize: 12 }}>
+              Save each job or regular income (e.g. “Job A – 15th pay”, weekly freelance). On payday just pick it from
+              the Income form.
+            </Text>
+          ) : (
+            incomeSources.map((src) => (
+              <Pressable
+                key={src.id}
+                onPress={() => onEditIncomeSource(src)}
+                style={({ pressed }) => [styles.recurringRow, { borderColor: t.border, opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Text style={{ fontSize: 18 }}>{categoryIcon(src.category)}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={{ color: t.text, fontSize: 13, fontWeight: '600' }}>
+                    {src.name}
+                  </Text>
+                  <Text style={{ color: t.textMuted, fontSize: 11 }}>
+                    {scheduleLabel(src)}
+                    {isDueOn(src, nowTs) ? ' · due today' : ''}
+                  </Text>
+                </View>
+                <Text style={{ color: t.income, fontWeight: '700' }}>{peso(src.amount)}</Text>
+                <Feather name="chevron-right" size={16} color={t.textFaint} />
+              </Pressable>
+            ))
+          )}
+        </View>
+      </FadeInView>
+
       <FadeInView delay={320}>
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
           {header('repeat', 'Monthly Expenses', recurring.length ? `${peso(recurringTotal)} / month` : undefined)}
@@ -327,6 +416,17 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: '600', fontSize: 14 },
   stacked: { flexDirection: 'row', height: 14, borderRadius: 999, overflow: 'hidden', gap: 2 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  savingsLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dashed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
   recurringRow: {
     flexDirection: 'row',
     alignItems: 'center',
