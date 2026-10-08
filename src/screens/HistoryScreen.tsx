@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-n
 import InnerHorizontalScroll from '../components/InnerHorizontalScroll';
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import { CATEGORIES, Expense, formatDate, formatDay, formatTime, isIncome, peso, totalIncome, totalSpent } from '../expenses';
+import { logText, useLogFont } from '../fonts';
 import { Theme } from '../theme';
 
 type Props = {
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: Props) {
+  const font = useLogFont();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
 
@@ -107,20 +109,20 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
               >
                 <View style={[styles.rowItem, { borderBottomColor: t.border, backgroundColor: t.card }]}>
                   <View style={{ width: 82 }}>
-                    <Text style={{ color: t.accent, fontWeight: '600', fontSize: 12 }}>{formatTime(e.timestamp)}</Text>
-                    <Text style={{ color: t.textMuted, fontSize: 11 }}>
+                    <Text style={[logText(font, true, 12), { color: t.accent }]}>{formatTime(e.timestamp)}</Text>
+                    <Text style={[logText(font, false, 11), { color: t.textMuted }]}>
                       {formatDate(e.timestamp)} • {formatDay(e.timestamp).slice(0, 3)}
                     </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: t.text, fontWeight: '600', fontSize: 13 }}>
+                    <Text style={[logText(font, true, 13), { color: t.text }]}>
                       {e.item}
                       {e.recurringId ? '  🔁' : ''}
                     </Text>
                     <Text style={[styles.tag, { color: t.textMuted, borderColor: t.border }]}>{e.category}</Text>
                   </View>
                   <Text
-                    style={{ color: isIncome(e) ? t.income : t.accent, fontWeight: '700', fontVariant: ['tabular-nums'] }}
+                    style={[logText(font, true, 14), { color: isIncome(e) ? t.income : t.accent, fontVariant: ['tabular-nums'] }]}
                   >
                     {isIncome(e) ? '+' : ''}
                     {peso(e.amount)}

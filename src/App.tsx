@@ -24,6 +24,7 @@ import EditModal from './components/EditModal';
 import ImportModal from './components/ImportModal';
 import { PagerLockContext } from './components/InnerHorizontalScroll';
 import IncomeSourceModal from './components/IncomeSourceModal';
+import FontPickerModal from './components/FontPickerModal';
 import SideMenu from './components/SideMenu';
 import { PressableScale } from './components/motion';
 import Toast, { ToastData } from './components/Toast';
@@ -41,6 +42,7 @@ import {
   totalIncome,
   totalSpent,
 } from './expenses';
+import { fontByKey, LOG_FONTS, LogFontContext, useLoadLogFonts } from './fonts';
 import { ImportResult } from './importer';
 import { IncomeSource } from './incomeSources';
 import { collectDue, entryFor, Recurring } from './recurring';
@@ -49,6 +51,7 @@ import HistoryScreen from './screens/HistoryScreen';
 import StatsScreen from './screens/StatsScreen';
 import { usePersistentState } from './storage';
 import { darkTheme, lightTheme } from './theme';
+import { tidyText } from './tidy';
 import { useUpdateCheck, versionLabel } from './updates';
 
 type Tab = 'add' | 'history' | 'stats';
@@ -77,6 +80,9 @@ function Main() {
   const [recurring, setRecurring, recurringLoaded] = usePersistentState<Recurring[]>('spendtrack.recurring', []);
   const [incomeSources, setIncomeSources] = usePersistentState<IncomeSource[]>('spendtrack.incomeSources', []);
   const [pastSavings, setPastSavings] = usePersistentState<number | null>('spendtrack.pastSavings', null);
+  const [logFontKey, setLogFontKey] = usePersistentState('spendtrack.logFont', 'system');
+  const [fontsReady] = useLoadLogFonts();
+  const logFont = fontsReady ? fontByKey(logFontKey) : LOG_FONTS[0];
   const [tab, setTab] = useState<Tab>('add');
   const [editing, setEditing] = useState<Expense | null>(null);
   // Which budget the budget sheet is editing: the overall monthly one (category null) or a category's.
@@ -84,6 +90,7 @@ function Main() {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
   // Paused while a finger is on a horizontal list inside a page (see InnerHorizontalScroll).
   const [pagerLocked, setPagerLocked] = useState(false);
   const [pastSavingsOpen, setPastSavingsOpen] = useState(false);
@@ -150,7 +157,8 @@ function Main() {
     return null;
   };
 
-  const addEntry = (e: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean) => {
+  const addEntry = (raw: Omit<Expense, 'id' | 'timestamp'>, repeatMonthly: boolean) => {
+    const e = { ...raw, item: tidyText(raw.item) };
     const ts = Date.now();
     setNow(ts);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -183,7 +191,8 @@ function Main() {
     });
   };
 
-  const saveEdit = (updated: Expense) => {
+  const saveEdit = (edited: Expense) => {
+    const updated = { ...edited, item: tidyText(edited.item) };
     setExpenses((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
     setEditing(null);
     showToast('Changes saved');
@@ -195,7 +204,8 @@ function Main() {
     showToast(`"${rule.item}" stopped`, 'UNDO', () => setRecurring((prev) => [...prev, rule]));
   };
 
-  const saveIncomeSource = (src: IncomeSource) => {
+  const saveIncomeSource = (raw: IncomeSource) => {
+    const src = { ...raw, name: tidyText(raw.name) };
     const exists = incomeSources.some((x) => x.id === src.id);
     setIncomeSources((prev) => (exists ? prev.map((x) => (x.id === src.id ? src : x)) : [...prev, src]));
     setSourceTarget(null);
@@ -206,6 +216,32 @@ function Main() {
     setIncomeSources((prev) => prev.filter((x) => x.id !== src.id));
     setSourceTarget(null);
     showToast(`"${src.name}" deleted`, 'UNDO', () => setIncomeSources((prev) => [...prev, src]));
+  };
+
+  // One-off clean-up of descriptions saved before auto-tidy existed.
+  const tidyExisting = () => {
+    const changed = expenses.filter((e) => tidyText(e.item) !== e.item);
+    if (changed.length === 0) {
+      showToast('All entries already look tidy ✨');
+      return;
+    }
+    const example = changed[0];
+    Alert.alert(
+      'Tidy up entries?',
+      `${changed.length} descriptions will be cleaned up — spacing, punctuation and capital letters.\n\ne.g. "${example.item}" → "${tidyText(example.item)}"`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Tidy up',
+          onPress: () => {
+            const before = expenses;
+            setExpenses((prev) => prev.map((e) => ({ ...e, item: tidyText(e.item) })));
+            setRecurring((prev) => prev.map((r) => ({ ...r, item: tidyText(r.item) })));
+            showToast(`Tidied ${changed.length} entries`, 'UNDO', () => setExpenses(before));
+          },
+        },
+      ],
+    );
   };
 
   const savePastSavings = (amount: number | null) => {
@@ -300,7 +336,7 @@ function Main() {
   // Shows what was found in the spreadsheet and adds the rows that aren't already in the app.
   const confirmImport = (result: ImportResult) => {
     const ids = new Set(expenses.map((e) => e.id));
-    const fresh = result.entries.filter((e) => !ids.has(e.id));
+    const fresh = result.entries.filter((e) => !ids.has(e.id)).map((e) => ({ ...e, item: tidyText(e.item) }));
     const dupes = result.entries.length - fresh.length;
     if (fresh.length === 0) {
       setImportOpen(false);
@@ -346,70 +382,72 @@ function Main() {
         <Text style={{ color: t.text, fontWeight: '800', fontSize: 18 }}>SpendTrack</Text>
       </View>
 
-      <PagerLockContext.Provider value={setPagerLocked}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          {/* Swipeable pages; the tab bar highlight follows the scroll position. */}
-          <Animated.ScrollView
-            ref={pagerRef}
-            horizontal
-            pagingEnabled
-            scrollEnabled={!pagerLocked}
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            scrollEventThrottle={16}
-            onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-            onMomentumScrollEnd={(e) => {
-              const i = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
-              setTab(TABS[Math.max(0, Math.min(TABS.length - 1, i))].key);
-            }}
-          >
-            <Page width={pageWidth}>
-              <AddScreen
-                theme={t}
-                expenses={expenses}
-                spentToday={spentToday}
-                spentThisMonth={spentThisMonth}
-                incomeThisMonth={incomeThisMonth}
-                monthlyBudget={monthlyBudget}
-                totalSavings={totalSavings}
-                incomeSources={incomeSources}
-                onAddIncomeSource={() => setSourceTarget({ source: null })}
-                onAdd={addEntry}
-                onViewAll={() => switchTab('history')}
-                onSetBudget={() => setBudgetTarget({ category: null })}
-              />
-            </Page>
-            <Page width={pageWidth}>
-              <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteEntry} />
-            </Page>
-            <Page width={pageWidth}>
-              <StatsScreen
-                theme={t}
-                expenses={expenses}
-                monthlyBudget={monthlyBudget}
-                categoryBudgets={categoryBudgets}
-                recurring={recurring}
-                incomeSources={incomeSources}
-                pastSavings={pastSavings}
-                onEditPastSavings={() => setPastSavingsOpen(true)}
-                onEditIncomeSource={(source) => setSourceTarget({ source })}
-                onSetBudget={() => setBudgetTarget({ category: null })}
-                onSetCategoryBudget={(category) => setBudgetTarget({ category })}
-                onDeleteRecurring={deleteRecurring}
-                onBackup={backup}
-                onRestore={restore}
-                onImport={() => setImportOpen(true)}
-                onClear={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setExpenses([]);
-                  setRecurring([]);
-                  showToast('All entries cleared');
-                }}
-              />
-            </Page>
-          </Animated.ScrollView>
-        </KeyboardAvoidingView>
-      </PagerLockContext.Provider>
+      <LogFontContext.Provider value={logFont}>
+        <PagerLockContext.Provider value={setPagerLocked}>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            {/* Swipeable pages; the tab bar highlight follows the scroll position. */}
+            <Animated.ScrollView
+              ref={pagerRef}
+              horizontal
+              pagingEnabled
+              scrollEnabled={!pagerLocked}
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              scrollEventThrottle={16}
+              onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+              onMomentumScrollEnd={(e) => {
+                const i = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
+                setTab(TABS[Math.max(0, Math.min(TABS.length - 1, i))].key);
+              }}
+            >
+              <Page width={pageWidth}>
+                <AddScreen
+                  theme={t}
+                  expenses={expenses}
+                  spentToday={spentToday}
+                  spentThisMonth={spentThisMonth}
+                  incomeThisMonth={incomeThisMonth}
+                  monthlyBudget={monthlyBudget}
+                  totalSavings={totalSavings}
+                  incomeSources={incomeSources}
+                  onAddIncomeSource={() => setSourceTarget({ source: null })}
+                  onAdd={addEntry}
+                  onViewAll={() => switchTab('history')}
+                  onSetBudget={() => setBudgetTarget({ category: null })}
+                />
+              </Page>
+              <Page width={pageWidth}>
+                <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteEntry} />
+              </Page>
+              <Page width={pageWidth}>
+                <StatsScreen
+                  theme={t}
+                  expenses={expenses}
+                  monthlyBudget={monthlyBudget}
+                  categoryBudgets={categoryBudgets}
+                  recurring={recurring}
+                  incomeSources={incomeSources}
+                  pastSavings={pastSavings}
+                  onEditPastSavings={() => setPastSavingsOpen(true)}
+                  onEditIncomeSource={(source) => setSourceTarget({ source })}
+                  onSetBudget={() => setBudgetTarget({ category: null })}
+                  onSetCategoryBudget={(category) => setBudgetTarget({ category })}
+                  onDeleteRecurring={deleteRecurring}
+                  onBackup={backup}
+                  onRestore={restore}
+                  onImport={() => setImportOpen(true)}
+                  onClear={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setExpenses([]);
+                    setRecurring([]);
+                    showToast('All entries cleared');
+                  }}
+                />
+              </Page>
+            </Animated.ScrollView>
+          </KeyboardAvoidingView>
+        </PagerLockContext.Provider>
+      </LogFontContext.Provider>
 
       <TabBar tab={tab} position={pagePosition} onChange={switchTab} theme={t} />
 
@@ -440,8 +478,13 @@ function Main() {
             ],
           },
           {
+            title: 'APPEARANCE',
+            items: [{ icon: 'type', label: `Log font · ${fontByKey(logFontKey).label}`, onPress: () => setFontPickerOpen(true) }],
+          },
+          {
             title: 'DATA',
             items: [
+              { icon: 'edit-3', label: 'Tidy up entry text', onPress: tidyExisting },
               { icon: 'download', label: 'Export to CSV', onPress: exportCSV },
               { icon: 'file-plus', label: 'Import from spreadsheet', onPress: () => setImportOpen(true) },
               { icon: 'upload-cloud', label: 'Back up', onPress: backup },
@@ -449,6 +492,18 @@ function Main() {
             ],
           },
         ]}
+      />
+      <FontPickerModal
+        theme={t}
+        visible={fontPickerOpen}
+        current={logFontKey}
+        fontsReady={fontsReady}
+        onClose={() => setFontPickerOpen(false)}
+        onPick={(key) => {
+          setLogFontKey(key);
+          setFontPickerOpen(false);
+          showToast(`Log font: ${fontByKey(key).label}`);
+        }}
       />
       <IncomeSourceModal
         theme={t}

@@ -19,6 +19,7 @@ import {
 } from '../expenses';
 import { IncomeSource } from '../incomeSources';
 import { ordinal } from '../recurring';
+import { logText, useLogFont } from '../fonts';
 import { budgetColor, Theme } from '../theme';
 
 type Props = {
@@ -51,6 +52,7 @@ export default function AddScreen({
   onSetBudget,
   onAddIncomeSource,
 }: Props) {
+  const font = useLogFont();
   const [kind, setKind] = useState<Kind>('expense');
   const [item, setItem] = useState('');
   const [amount, setAmount] = useState('');
@@ -262,16 +264,16 @@ export default function AddScreen({
               <View style={[styles.row, { flex: 1 }]}>
                 <Text style={{ fontSize: 18 }}>{categoryIcon(e.category)}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text numberOfLines={1} style={{ color: t.text, fontWeight: '700', fontSize: 13 }}>
+                  <Text numberOfLines={1} style={[logText(font, true, 13), { color: t.text }]}>
                     {e.item}
                     {e.recurringId ? '  🔁' : ''}
                   </Text>
-                  <Text style={{ color: t.textMuted, fontSize: 11 }}>
+                  <Text style={[logText(font, false, 11), { color: t.textMuted }]}>
                     {formatTime(e.timestamp)} • {formatDate(e.timestamp)} ({formatDay(e.timestamp).slice(0, 3)})
                   </Text>
                 </View>
               </View>
-              <Text style={{ color: isIncome(e) ? t.income : t.accent, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+              <Text style={[logText(font, true, 14), { color: isIncome(e) ? t.income : t.accent, fontVariant: ['tabular-nums'] }]}>
                 {isIncome(e) ? '+' : ''}
                 {peso(e.amount)}
               </Text>
