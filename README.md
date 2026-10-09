@@ -38,6 +38,10 @@ All data stays on your phone. Back it up from the menu.
 - A month-by-month table where you can change any single month (e.g. a smaller first paycheck). Weekly income counts the real paydays in each month.
 - Pick a month to see how much you'll have by then, with a 3D chart of your balance growing.
 
+**Prayer times**
+- The top-right of the header shows the current prayer and a countdown to the next one. Tap it for today's times.
+- Times are calculated on the phone with the `adhan` library. The location is detected once from your internet connection (city level), or you can enter coordinates. The calculation method and the Asr method (Standard or Hanafi) can be changed.
+
 Swipe left and right to move between Add Log, Table Log, Stats and Forecast.
 
 ## First-time setup (once)
@@ -77,4 +81,4 @@ npm run lint
 
 Code layout: `src/App.tsx` (state, pager, menu), `src/screens/` (Add, Table Log, Stats, Forecast),
 `src/components/` (sheets, pickers, charts, animation helpers), and plain logic modules in `src/`
-(`expenses`, `recurring`, `incomeSources`, `goals`, `forecast`, `summary`, `amountQuery`, `importer`, `backup`, `sheetsSync`, `sheetsScript`, `tidy`, `fonts`).
+(`expenses`, `recurring`, `incomeSources`, `goals`, `forecast`, `summary`, `amountQuery`, `importer`, `backup`, `sheetsSync`, `sheetsScript`, `prayer`, `tidy`, `fonts`).

@@ -29,6 +29,7 @@ import { PagerLockContext } from './components/InnerHorizontalScroll';
 import IncomeSourceModal from './components/IncomeSourceModal';
 import FontPickerModal from './components/FontPickerModal';
 import SheetsSyncModal from './components/SheetsSyncModal';
+import { PrayerChip, PrayerSheet } from './components/PrayerTimes';
 import SideMenu from './components/SideMenu';
 import PlanLineModal from './components/PlanLineModal';
 import SummaryModal from './components/SummaryModal';
@@ -57,6 +58,7 @@ import { emptyPlan, lineAmount, linesFromApp, Plan, PlanLine } from './forecast'
 import { Goal } from './goals';
 import { ImportResult } from './importer';
 import { IncomeSource } from './incomeSources';
+import { defaultsFor, locateByIp, PrayerSettings } from './prayer';
 import { collectDue, entryFor, Recurring } from './recurring';
 import { buildPayload, connectSheet, hashPayload, newSecret, pushToSheet, SheetsSync, shouldAutoSync } from './sheetsSync';
 import AddScreen from './screens/AddScreen';
@@ -102,6 +104,9 @@ function Main() {
   const [planLineTarget, setPlanLineTarget] = useState<PlanLine | { kind: PlanLine['kind'] } | null>(null);
   const [cellTarget, setCellTarget] = useState<{ line: PlanLine; month: Month } | null>(null);
   const [planStartOpen, setPlanStartOpen] = useState(false);
+  const [prayer, setPrayer, prayerLoaded] = usePersistentState<PrayerSettings | null>('spendtrack.prayer', null);
+  const [prayerInHeader, setPrayerInHeader] = usePersistentState('spendtrack.prayerInHeader', true);
+  const [prayerOpen, setPrayerOpen] = useState(false);
   const [sheetsSync, setSheetsSync] = usePersistentState<SheetsSync | null>('spendtrack.sheetsSync', null);
   // This phone's link code for the sheet; kept after "Stop syncing" so reconnecting still works.
   const [deviceSecret, setDeviceSecret] = usePersistentState('spendtrack.sheetsSecret', '');
@@ -224,6 +229,18 @@ function Main() {
   const updatePlan = (change: (p: Plan) => Plan) => setSavedPlan(change({ ...plan, seeded: true }));
 
   const saveTotal = (pastSavings ?? 0) + totalIncome(expenses) - totalSpent(expenses);
+
+  // First launch: detect the city once so the header can show the current prayer.
+  useEffect(() => {
+    if (!prayerLoaded || prayer) return;
+    let cancelled = false;
+    locateByIp()
+      .then((loc) => !cancelled && setPrayer({ ...loc, ...defaultsFor(loc.countryCode) }))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [prayerLoaded, prayer, setPrayer]);
 
   const todayEntries = useMemo(() => expenses.filter((e) => isSameDay(e.timestamp, now)), [expenses, now]);
   const monthEntries = useMemo(() => {
@@ -600,6 +617,11 @@ function Main() {
           <Feather name="credit-card" size={16} color={t.accent} />
         </View>
         <Text style={{ color: t.text, fontWeight: '800', fontSize: 18 }}>SpendTrack</Text>
+        {prayerInHeader && (
+          <View style={{ marginLeft: 'auto' }}>
+            <PrayerChip theme={t} settings={prayer} onPress={() => setPrayerOpen(true)} />
+          </View>
+        )}
       </View>
 
       <LogFontContext.Provider value={logFont}>
@@ -699,6 +721,7 @@ function Main() {
               { icon: 'list', label: 'Table Log', onPress: () => switchTab('history') },
               { icon: 'bar-chart-2', label: 'Stats', onPress: () => switchTab('stats') },
               { icon: 'compass', label: 'Forecast', onPress: () => switchTab('plan') },
+              { icon: 'moon', label: 'Prayer times', onPress: () => setPrayerOpen(true) },
             ],
           },
           {
@@ -734,6 +757,15 @@ function Main() {
             ],
           },
         ]}
+      />
+      <PrayerSheet
+        theme={t}
+        visible={prayerOpen}
+        settings={prayer}
+        showInHeader={prayerInHeader}
+        onClose={() => setPrayerOpen(false)}
+        onChange={setPrayer}
+        onToggleHeader={setPrayerInHeader}
       />
       <PlanLineModal
         theme={t}

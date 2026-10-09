@@ -10,6 +10,7 @@
     "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "adhan": "^4.4.6",
     "eslint-config-expo": "~57.0.2",
     "expo": "~57.0.27",
     "expo-application": "~57.0.3",
