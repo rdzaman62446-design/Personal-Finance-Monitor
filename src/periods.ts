@@ -8,7 +8,8 @@ export type PeriodKey =
   | 'lastMonth'
   | 'last3Months'
   | 'thisYear'
-  | 'all';
+  | 'all'
+  | 'custom';
 
 export const PERIODS: { key: PeriodKey; label: string; icon: string }[] = [
   { key: 'today', label: 'Today', icon: '☀️' },
@@ -20,12 +21,15 @@ export const PERIODS: { key: PeriodKey; label: string; icon: string }[] = [
   { key: 'last3Months', label: 'Last 3 months', icon: '📆' },
   { key: 'thisYear', label: 'This year', icon: '🎯' },
   { key: 'all', label: 'All time', icon: '♾️' },
+  { key: 'custom', label: 'Custom range…', icon: '📌' },
 ];
 
-export const periodLabel = (key: PeriodKey) => PERIODS.find((p) => p.key === key)?.label ?? 'All time';
+export const periodLabel = (key: PeriodKey) =>
+  key === 'custom' ? 'Custom range' : (PERIODS.find((p) => p.key === key)?.label ?? 'All time');
 
-// [start, end) in ms for a period, relative to `now`.
-export function periodRange(key: PeriodKey, now: number): [number, number] {
+// [start, end) in ms for a period, relative to `now`. `custom` is the user's chosen range.
+export function periodRange(key: PeriodKey, now: number, custom?: [number, number] | null): [number, number] {
+  if (key === 'custom') return custom ?? [-Infinity, Infinity];
   const d = new Date(now);
   const day = (offset: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + offset).getTime();
   const monday = (d.getDay() + 6) % 7; // days since Monday
@@ -53,9 +57,9 @@ export function periodRange(key: PeriodKey, now: number): [number, number] {
 }
 
 // Short description of the range, e.g. "Oct 6 – Oct 12".
-export function periodDates(key: PeriodKey, now: number) {
-  if (key === 'all') return 'Everything logged';
-  const [a, b] = periodRange(key, now);
+export function periodDates(key: PeriodKey, now: number, custom?: [number, number] | null) {
+  if (key === 'all' || (key === 'custom' && !custom)) return 'Everything logged';
+  const [a, b] = periodRange(key, now, custom);
   const fmt = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const last = b - 1;
   return fmt(a) === fmt(last) ? new Date(a).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : `${fmt(a)} – ${fmt(last)}`;

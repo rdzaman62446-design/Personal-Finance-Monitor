@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-n
 import { bareAmount, parseAmountQuery } from '../amountQuery';
 import InnerHorizontalScroll from '../components/InnerHorizontalScroll';
 import PeriodDropdown from '../components/PeriodDropdown';
+import RangeSheet from '../components/RangeSheet';
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import { categoriesFor, Expense, formatDate, formatDay, formatTime, isIncome, peso, totalIncome, totalSpent } from '../expenses';
 import { logText, useLogFont } from '../fonts';
@@ -23,7 +24,9 @@ type Props = {
 export default function HistoryScreen({ theme: t, expenses, now, onEdit, onDelete }: Props) {
   const font = useLogFont();
   const [period, setPeriod] = useState<PeriodKey>('today');
-  const [start, end] = periodRange(period, now);
+  const [customRange, setCustomRange] = useState<[number, number] | null>(null);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [start, end] = periodRange(period, now, customRange);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
 
@@ -70,7 +73,25 @@ export default function HistoryScreen({ theme: t, expenses, now, onEdit, onDelet
   return (
     <View style={{ gap: 12 }}>
       <FadeInView>
-        <PeriodDropdown theme={t} value={period} now={now} onChange={setPeriod} />
+        <PeriodDropdown
+          theme={t}
+          value={period}
+          now={now}
+          custom={customRange}
+          onChange={setPeriod}
+          onCustom={() => setRangeOpen(true)}
+        />
+        <RangeSheet
+          theme={t}
+          visible={rangeOpen}
+          value={customRange}
+          onClose={() => setRangeOpen(false)}
+          onPick={(range) => {
+            setCustomRange(range);
+            setPeriod('custom');
+            setRangeOpen(false);
+          }}
+        />
       </FadeInView>
 
       <FadeInView delay={30}>
@@ -126,7 +147,9 @@ export default function HistoryScreen({ theme: t, expenses, now, onEdit, onDelet
                   ? `Nothing matches in ${periodLabel(period).toLowerCase()}.`
                   : period === 'today'
                     ? 'Nothing logged today yet.'
-                    : `Nothing logged ${period === 'yesterday' ? 'yesterday' : `in ${periodLabel(period).toLowerCase()}`}.`}
+                    : period === 'custom'
+                      ? 'Nothing logged in this range.'
+                      : `Nothing logged ${period === 'yesterday' ? 'yesterday' : `in ${periodLabel(period).toLowerCase()}`}.`}
             </Text>
             {period !== 'all' && (
               <PressableScale onPress={() => setPeriod('all')} style={[styles.allBtn, { borderColor: t.accent }]}>

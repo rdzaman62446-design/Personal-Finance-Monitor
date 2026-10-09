@@ -11,12 +11,17 @@ export default function PeriodDropdown({
   theme: t,
   value,
   now,
+  custom,
   onChange,
+  onCustom,
 }: {
   theme: Theme;
   value: PeriodKey;
   now: number;
+  custom: [number, number] | null;
   onChange: (p: PeriodKey) => void;
+  // Opens the range picker; the parent switches to 'custom' once a range is chosen.
+  onCustom: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [rotation] = useState(() => new Animated.Value(0));
@@ -39,7 +44,7 @@ export default function PeriodDropdown({
         <Text style={{ fontSize: 16 }}>{current?.icon}</Text>
         <View style={{ flex: 1 }}>
           <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>{periodLabel(value)}</Text>
-          <Text style={{ color: t.textMuted, fontSize: 11 }}>{periodDates(value, now)}</Text>
+          <Text style={{ color: t.textMuted, fontSize: 11 }}>{periodDates(value, now, custom)}</Text>
         </View>
         <Animated.View style={{ transform: [{ rotate }] }}>
           <Feather name="chevron-down" size={18} color={open ? t.accent : t.textMuted} />
@@ -54,8 +59,9 @@ export default function PeriodDropdown({
               <FadeInView key={p.key} delay={i * 20} from={-6}>
                 <Pressable
                   onPress={() => {
-                    onChange(p.key);
                     toggle();
+                    if (p.key === 'custom') onCustom();
+                    else onChange(p.key);
                   }}
                   style={({ pressed }) => [
                     styles.option,
@@ -64,7 +70,9 @@ export default function PeriodDropdown({
                 >
                   <Text style={{ fontSize: 15 }}>{p.icon}</Text>
                   <Text style={{ flex: 1, color: active ? t.accent : t.text, fontSize: 14, fontWeight: active ? '700' : '400' }}>{p.label}</Text>
-                  <Text style={{ color: t.textFaint, fontSize: 11 }}>{p.key === 'all' ? '' : periodDates(p.key, now)}</Text>
+                  <Text style={{ color: t.textFaint, fontSize: 11 }}>
+                    {p.key === 'all' ? '' : p.key === 'custom' ? (custom ? periodDates('custom', now, custom) : 'Pick dates') : periodDates(p.key, now)}
+                  </Text>
                   {active && <Feather name="check" size={16} color={t.accent} />}
                 </Pressable>
               </FadeInView>
