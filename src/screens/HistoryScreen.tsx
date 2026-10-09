@@ -4,20 +4,26 @@ import { Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-n
 
 import { bareAmount, parseAmountQuery } from '../amountQuery';
 import InnerHorizontalScroll from '../components/InnerHorizontalScroll';
+import PeriodDropdown from '../components/PeriodDropdown';
 import { AnimatedNumber, FadeInView, PressableScale } from '../components/motion';
 import { categoriesFor, Expense, formatDate, formatDay, formatTime, isIncome, peso, totalIncome, totalSpent } from '../expenses';
 import { logText, useLogFont } from '../fonts';
+import { periodLabel, PeriodKey, periodRange } from '../periods';
 import { Theme } from '../theme';
 
 type Props = {
   theme: Theme;
   expenses: Expense[];
+  // Current time, refreshed when the app returns to the foreground, so "Today" rolls over.
+  now: number;
   onEdit: (e: Expense) => void;
   onDelete: (e: Expense) => void;
 };
 
-export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: Props) {
+export default function HistoryScreen({ theme: t, expenses, now, onEdit, onDelete }: Props) {
   const font = useLogFont();
+  const [period, setPeriod] = useState<PeriodKey>('today');
+  const [start, end] = periodRange(period, now);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
 
@@ -40,9 +46,10 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
         (filter === 'Expenses' && !isIncome(e)) ||
         (filter === 'Income' && isIncome(e)) ||
         e.category === filter;
-      return matchesSearch && matchesFilter;
+      const inPeriod = e.timestamp >= start && e.timestamp < end;
+      return inPeriod && matchesSearch && matchesFilter;
     });
-  }, [expenses, query, filter, amountQuery]);
+  }, [expenses, query, filter, amountQuery, start, end]);
 
   const filteredSpent = totalSpent(filtered);
   const filteredIncome = totalIncome(filtered);
@@ -63,6 +70,10 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
   return (
     <View style={{ gap: 12 }}>
       <FadeInView>
+        <PeriodDropdown theme={t} value={period} now={now} onChange={setPeriod} />
+      </FadeInView>
+
+      <FadeInView delay={30}>
         <View style={[styles.search, { backgroundColor: t.card, borderColor: t.border }]}>
           <Feather name="search" size={16} color={t.textMuted} />
           <TextInput
@@ -109,8 +120,19 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
           <FadeInView style={{ alignItems: 'center', paddingVertical: 36, gap: 8 }}>
             <Feather name="inbox" size={28} color={t.textFaint} />
             <Text style={{ color: t.textFaint, fontSize: 13 }}>
-              {expenses.length === 0 ? 'Nothing recorded yet.' : 'Nothing matches your search.'}
+              {expenses.length === 0
+                ? 'Nothing recorded yet.'
+                : query || filter !== 'All'
+                  ? `Nothing matches in ${periodLabel(period).toLowerCase()}.`
+                  : period === 'today'
+                    ? 'Nothing logged today yet.'
+                    : `Nothing logged ${period === 'yesterday' ? 'yesterday' : `in ${periodLabel(period).toLowerCase()}`}.`}
             </Text>
+            {period !== 'all' && (
+              <PressableScale onPress={() => setPeriod('all')} style={[styles.allBtn, { borderColor: t.accent }]}>
+                <Text style={{ color: t.accent, fontSize: 12, fontWeight: '700' }}>Show all time</Text>
+              </PressableScale>
+            )}
           </FadeInView>
         ) : (
           filtered.map((e, i) => (
@@ -152,8 +174,8 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
 
         <View style={[styles.footer, { borderTopColor: t.accent, backgroundColor: t.cardAlt }]}>
           <View>
-            <Text style={{ color: t.accent, fontWeight: '800', fontSize: 12, letterSpacing: 1 }}>TOTAL SPENT</Text>
-            <Text style={{ color: t.textMuted, fontSize: 11 }}>Filtered Count: {filtered.length} items</Text>
+            <Text style={{ color: t.accent, fontWeight: '800', fontSize: 12, letterSpacing: 1 }}>TOTAL SPENT · {periodLabel(period).toUpperCase()}</Text>
+            <Text style={{ color: t.textMuted, fontSize: 11 }}>{filtered.length} items</Text>
           </View>
           <AnimatedNumber value={filteredSpent} format={peso} style={{ color: t.accent, fontWeight: '800', fontSize: 16 }} />
         </View>
@@ -174,6 +196,7 @@ export default function HistoryScreen({ theme: t, expenses, onEdit, onDelete }: 
 
 const styles = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12 },
+  allBtn: { marginTop: 4, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   amountChip: {
     alignSelf: 'flex-start',
     flexDirection: 'row',

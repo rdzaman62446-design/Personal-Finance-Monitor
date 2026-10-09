@@ -12,6 +12,7 @@ All data stays on your phone. Back it up from the menu.
 - **Saved incomes**: set up each job once (monthly on a day, or weekly on a weekday). On payday, pick it from the Income form. Sources due today and ones already logged are marked.
 
 **Table Log**
+- Opens on today's entries. A period dropdown switches to Yesterday, This/Last week, This/Last month, Last 3 months, This year or All time.
 - Search by text, or by amount: `>500`, `under 200`, `100-300`, `=150`. Filter by expenses, income or category.
 - Tap a row to edit it, or long-press to delete it (with Undo).
 

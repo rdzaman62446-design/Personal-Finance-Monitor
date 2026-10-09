@@ -637,7 +637,7 @@ function Main() {
                 />
               </Page>
               <Page width={pageWidth}>
-                <HistoryScreen theme={t} expenses={expenses} onEdit={setEditing} onDelete={deleteEntry} />
+                <HistoryScreen theme={t} expenses={expenses} now={now} onEdit={setEditing} onDelete={deleteEntry} />
               </Page>
               <Page width={pageWidth}>
                 <StatsScreen
