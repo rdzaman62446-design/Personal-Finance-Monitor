@@ -7,6 +7,8 @@ name: Publish OTA update
 on:
   push:
     branches: [main]
+    # Docs and workflow edits don't change the app, so they don't send an update.
+    paths-ignore: ['docs/**', '**/*.md', '.github/**']
   workflow_dispatch:
 
 concurrency:
