@@ -14,6 +14,7 @@ All data stays on your phone. Back it up from the menu.
 **Table Log**
 - Opens on today's entries. A period dropdown switches to Yesterday, This/Last week, This/Last month, Last 3 months, This year, All time, or a custom date range picked on a calendar.
 - Search by text, or by amount: `>500`, `under 200`, `100-300`, `=150`. Filter by expenses, income or category.
+- Column header with sorting: tap **Amount** for highest → lowest → back to date order, or **Time / Date** to flip newest/oldest.
 - Tap a row to edit it, or long-press to delete it (with Undo).
 
 **Stats**

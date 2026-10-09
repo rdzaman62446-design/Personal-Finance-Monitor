@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 
@@ -53,6 +53,20 @@ export default function HistoryScreen({ theme: t, expenses, now, onEdit, onDelet
       return inPeriod && matchesSearch && matchesFilter;
     });
   }, [expenses, query, filter, amountQuery, start, end]);
+
+  // Column sorting: tap Amount for high→low, low→high, then back to date; tap Time/Date to flip date order.
+  const [sort, setSort] = useState<'dateDesc' | 'dateAsc' | 'amountDesc' | 'amountAsc'>('dateDesc');
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    if (sort === 'dateAsc') list.sort((a, b) => a.timestamp - b.timestamp);
+    else if (sort === 'amountDesc') list.sort((a, b) => b.amount - a.amount);
+    else if (sort === 'amountAsc') list.sort((a, b) => a.amount - b.amount);
+    else list.sort((a, b) => b.timestamp - a.timestamp);
+    return list;
+  }, [filtered, sort]);
+  const cycleAmountSort = () =>
+    setSort((s) => (s === 'amountDesc' ? 'amountAsc' : s === 'amountAsc' ? 'dateDesc' : 'amountDesc'));
+  const toggleDateSort = () => setSort((s) => (s === 'dateDesc' ? 'dateAsc' : 'dateDesc'));
 
   const filteredSpent = totalSpent(filtered);
   const filteredIncome = totalIncome(filtered);
@@ -137,6 +151,37 @@ export default function HistoryScreen({ theme: t, expenses, now, onEdit, onDelet
       )}
 
       <View style={[styles.table, { backgroundColor: t.card, borderColor: t.border }]}>
+        {filtered.length > 0 && (
+          <View style={[styles.headerRow, { backgroundColor: t.cardAlt, borderBottomColor: t.border }]}>
+            <Pressable onPress={toggleDateSort} hitSlop={6} style={[styles.headerCell, { width: 82 }]}>
+              <Text style={[styles.headerText, { color: sort.startsWith('date') ? t.accent : t.textMuted }]}>TIME / DATE</Text>
+              <MaterialCommunityIcons
+                name={sort === 'dateAsc' ? 'sort-calendar-ascending' : 'sort-calendar-descending'}
+                size={13}
+                color={sort.startsWith('date') ? t.accent : t.textFaint}
+              />
+            </Pressable>
+            <Text style={[styles.headerText, { flex: 1, color: t.textMuted }]}>ITEM</Text>
+            <PressableScale
+              onPress={cycleAmountSort}
+              scaleTo={0.9}
+              style={[
+                styles.sortBtn,
+                {
+                  borderColor: sort.startsWith('amount') ? t.accent : t.border,
+                  backgroundColor: sort.startsWith('amount') ? t.accentSoft : 'transparent',
+                },
+              ]}
+            >
+              <Text style={[styles.headerText, { color: sort.startsWith('amount') ? t.accent : t.textMuted }]}>AMOUNT</Text>
+              <MaterialCommunityIcons
+                name={sort === 'amountDesc' ? 'sort-numeric-descending' : sort === 'amountAsc' ? 'sort-numeric-ascending' : 'sort'}
+                size={14}
+                color={sort.startsWith('amount') ? t.accent : t.textMuted}
+              />
+            </PressableScale>
+          </View>
+        )}
         {filtered.length === 0 ? (
           <FadeInView style={{ alignItems: 'center', paddingVertical: 36, gap: 8 }}>
             <Feather name="inbox" size={28} color={t.textFaint} />
@@ -158,7 +203,7 @@ export default function HistoryScreen({ theme: t, expenses, now, onEdit, onDelet
             )}
           </FadeInView>
         ) : (
-          filtered.map((e, i) => (
+          sorted.map((e, i) => (
             <FadeInView key={e.id} delay={Math.min(i, 12) * 35}>
               <PressableScale
                 scaleTo={0.97}
@@ -231,6 +276,17 @@ const styles = StyleSheet.create({
   },
   pill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   table: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerCell: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   rowItem: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   tag: {
     alignSelf: 'flex-start',
