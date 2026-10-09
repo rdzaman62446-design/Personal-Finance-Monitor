@@ -157,7 +157,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: linked
-        run: node -e "process.exit(require('./app.json').expo.extra?.eas?.projectId ? 0 : 1)" && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "::warning::Run 'Setup Expo project' first."
+        run: |
+          if node -e "process.exit(require('./app.json').expo.extra?.eas?.projectId ? 0 : 1)"; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Run 'Setup Expo project' first."
+          fi
       - if: steps.linked.outputs.ok == 'true'
         uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
